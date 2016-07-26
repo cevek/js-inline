@@ -1,0 +1,14 @@
+var mapCode = "map = (fn, ctx) => {const arr = new Array(this.length); for (let i=0; i<this.length; i++) arr[i] = fn.call(ctx, this[i], i); return arr}";
+var code1 = "\n//@inline\nconst b = a.map(item => item + 1);\n";
+var code1T = "const _aLen=a.length, _b = new Array(_aLen); for (let i=0; i < _aLen, i++)_b[i]=a[i];const b = _b;";
+var code2 = "\n//@inline\nconst b = a.map((item, i, _this) => item + 1 + i + _this.foo, {});\n";
+var code2T = "const _aLen=a.length, _this = {}, _b = new Array(_aLen); for (let i=0; i < _aLen, i++) _b[i]=a[i] + 1 + i + _this.foo;const b = _b;";
+var code3 = "\n//@inline\nconst b = a.map((item, i, _this) { return item + 1 + i + _this.foo } );\n";
+var code31 = "\n//@inline\nconst b = a.map((item, i, _this) { return item + 1 + i + _this.foo } ).map(item => item + 10);\n";
+var code4 = "\nvar item = null;\nconst i = null;\nlet _this = null;\n//@inline\nconst b = a.map((item, i, _this) { return item + 1 + i + _this.foo } );\n";
+var code5 = "\nvar item = null;\nconst i = null;\nlet _this = null;\n//@inline\nconst b = a.map((item, i, _this) { return item + 1 + i + _this.foo + item.map( (item, x, _this) => item + 2 + i + _this.bar) } );\n";
+var code6 = "\nvar item = null;\nconst i = null;\nlet _this = null;\nfunction foo(){\n    //@inline\n    const b = a.map((item, i, _this) { return item + 1 + i + _this.foo + item.map( (item, x, _this) => item + 2 + i + _this.bar) } );\n}\n";
+var code7 = "\n//@inline\nconst b = a.map((item, i, _this) { const xitem = 0; xitem++; return item + 1 + i + _this.foo + item.map( (item, x, _this) => item + 2 + i + _this.bar + xitem) } );\n";
+var code8 = "\nvar item = null;\nconst i = null;\nlet _this = null;\nfunction foo(){\n    const x = 10;\n    let c = 0;\n    //@inline\n    const b = (x == 10 ? ((c = 1), a.map((item, i, _this) { return item + 1 + i + c )) : -1;\n}\n";
+var code9 = "\nfunction render(){\n    return (\n        value \n            ? items.map(item => dom(item))\n            : (value == 10 ? items.map(item => dom(item + 1)))\n    );\n}\n";
+var transpile = "";
