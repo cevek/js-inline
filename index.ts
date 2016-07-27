@@ -16,15 +16,61 @@ var map = function (arr, fn){
                         return newArr;
                     }
                     
-const newArr = []; let b; const a = 1; (b = (map(a, item => item + 1))); const c = 3;`;
+const newArr = []; 
+let b; 
+const a = 1; 
+(b = (map(a, item => item + 1))); 
+const c = 3;`;
 
 function parseToAst(code):types.Node {
-    return Babel.transform(code, {compact: false, presets: ['es2015']}).ast.program.body;
+    return Babel.transform(code, {compact: false, presets: ['es2015', 'stage-0']}).ast.program.body;
 }
+
+function printAst(code):types.Node {
+    const result = Babel.transform(code, {compact: false, presets: ['stage-0']});
+    return JSON.stringify(result.ast.program.body, (k, v) => {
+            if (k == 'start' || k == 'end' || k == 'loc') return void 0;
+            return v
+        }, 3) + '\n' + result.code;
+}
+//|  ArrayExpression | ObjectExpression | ConditionalExpression | LogicalExpression | SequenceExpression | VariableDeclaration
+//|      AssignmentExpression | BinaryExpression | CallExpression
+//|      FunctionExpression | Identifier
+//|      StringLiteral | NumericLiteral | BooleanLiteral | RegExpLiteral
+//|      MemberExpression | NewExpression
+//|      ThisExpression | UnaryExpression | UpdateExpression | ArrowFunctionExpression
+//|      ClassExpression | MetaProperty | Super | TaggedTemplateExpression | TemplateLiteral
+//|      YieldExpression | TypeCastExpression
+//|      JSXElement | JSXEmptyExpression | JSXIdentifier | JSXMemberExpression
+//|      ParenthesizedExpression | AwaitExpression | BindExpression | DoExpression
+
+//|  BlockParent = BlockStatement | DoWhileStatement | ForInStatement | ForStatement | FunctionDeclaration
+//|       FunctionExpression | Program | ObjectMethod | SwitchStatement | WhileStatement
+//|       ArrowFunctionExpression | ForOfStatement | ClassMethod;
+
+function deepCloneNode(node) {
+    if (node == null || node == undefined || typeof node == 'number' || typeof node == 'string' || typeof node == 'boolean' || typeof node == 'function' || typeof node == 'symbol') {
+        return node;
+    }
+    if (Array.isArray(node)) {
+        return node.slice();
+    }
+    const keys = Object.keys(node);
+    const obj = {};
+    for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        obj[key] = deepCloneNode(node[key]);
+    }
+    return obj;
+}
+
+
 const plugin = function (obj) {
     var Plugin = obj.Plugin;
     var t:typeof types = obj.types;
     (window as any).plugin = obj;
+
+
 
 
     function getFullName(node) {
@@ -64,7 +110,8 @@ const plugin = function (obj) {
                         throw new Error('something goes wrong');
                     }
 
-                    console.log(nodePath, t);
+
+                    nodePath.remove()
 
                     const fnName = nodePath.node.callee.name;
                     if (fnName == 'map' || fnName == 'fn') {
@@ -94,16 +141,24 @@ const plugin = function (obj) {
                             const args = fnParams.map((param, i) => t.variableDeclaration('var', [t.variableDeclarator(param, nodePath.node.arguments[i])]));
                             // const nodeAfter = path.container[pos];
                             // nodePath.parentPath.insertBefore(...args, ...statement[0].body);
-                            path.insertBefore(args);
-                            path.insertBefore(fnPath.node.body.body);
+                            const cloneArgs = deepCloneNode(args);
+                            const cloneBody = deepCloneNode(fnPath.node.body.body);
+                            const returnStatement = cloneBody.pop();
+
+                            path.insertBefore(cloneArgs);
+                            path.insertBefore(cloneBody);
+
+                            nodePath.replaceWith(returnStatement.argument);
+
+                            nodePath.scope.rename('newArr', '_newArr');
+
+
                             // path.container.splice(pos, 0, ...args, ...statement[0].body);
                         }
                         // nodePath.resolve;
-                        const returnStatement = fnPath.node.body.body.pop();
 
                         // path.container.push(t.variableDeclaration('const', [t.variableDeclarator(t.identifier('newArr'), t.numericLiteral(123))]));
 
-                        nodePath.replaceWith(returnStatement.argument);
                         // nodePath.replaceInline(t.variableDeclaration('const', [t.variableDeclarator(t.identifier('newArr'), t.numericLiteral(123))]));
                         // nodePath.replaceExpressionWithStatements(forStatement);
                         // if (nodePath.containerproperty.name == 'map') {
