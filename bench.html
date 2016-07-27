@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<script type="text/javascript">
+    function map(arr, fn) {
+        const len = arr.length;
+        const newArr = new Array(len);
+        for (var i = 0; i < len; i++) {
+            newArr[i] = fn(arr[i]);
+        }
+        return newArr;
+    }
+
+    function filter(arr, fn) {
+        var len = arr.length;
+        var newArr = [];
+        for (var i = 0; i < len; i++) {
+            var item = arr[i];
+            if (fn(item)) {
+                newArr.push(item);
+            }
+        }
+        return newArr;
+    }
+
+    function fn() {
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+        return map(arr, function (item) {
+            return item + 1;
+        });
+    }
+
+    function inline1() {
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+        return function () {
+            var len = arr.length;
+            var newArr = new Array(len);
+            for (var i = 0; i < len; i++) {
+                var item = arr[i];
+                newArr[i] = item + 1;
+            }
+        }();
+    }
+    function inline2() {
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+        var len = arr.length;
+        var newArr = new Array(len);
+        for (var i = 0; i < len; i++) {
+            var item = arr[i];
+            newArr[i] = item + 1;
+        }
+        return newArr;
+    }
+
+    function fnComplex() {
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        return map(arr, function (item) {
+            return filter(arr, function (item2) {
+                return item2 == item
+            });
+        });
+    }
+
+    function inline1Complex() {
+        const arr = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        return function () {
+            var len = arr.length;
+            var newArr = new Array(len);
+            for (var i = 0; i < len; i++) {
+                var item = arr[i];
+                newArr[i] = function () {
+                    var len = arr.length;
+                    var newArr = [];
+                    for (var i = 0; i < len; i++) {
+                        var item2 = arr[i];
+                        if (item == item2) {
+                            newArr.push(item);
+                        }
+                    }
+                    return newArr;
+                }();
+            }
+        }();
+    }
+
+    function inline2Complex() {
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        var len = arr.length;
+        var newArr = new Array(len);
+        for (var i = 0; i < len; i++) {
+            var item = arr[i];
+            var len2 = arr.length;
+            var newArr2 = [];
+            for (var j = 0; j < len2; j++) {
+                var item2 = arr[j];
+                if (item2 == item) {
+                    newArr2.push(item2);
+                }
+            }
+            newArr[i] = newArr2;
+        }
+        return newArr;
+    }
+
+    function x(fn, count) {
+        var name = getName(fn);
+        console.time(name);
+        for (var i = 0; i < count; i++) {
+            fn();
+        }
+        console.timeEnd(name);
+    }
+
+    function getName(fn) {
+        return fn.name;
+    }
+
+    x(fn, 100000); // chrome52:80ms, canary54: 70ms, safari9:40ms, firefox47:35ms
+    x(inline1, 100000); // chrome52:80ms, canary54: 77ms, safari9:40ms, firefox47:39ms
+    x(inline2, 100000); // chrome52:30ms, canary54: 17ms, safari9:30ms, firefox47:35ms
+
+    x(fnComplex, 10000);   // chrome52:200ms, canary54: 185ms, safari9:120ms, firefox47:45ms
+    x(inline1Complex, 10000);  // chrome52:280ms, canary54: 210ms, safari9:60ms, firefox47:40ms
+    x(inline2Complex, 10000);  // chrome52:65ms, canary54: 55ms, safari9:45ms, firefox47:29ms
+
+</script>
+</body>
+</html>
+</body>
+</html>
