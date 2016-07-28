@@ -499,17 +499,22 @@
  "isPure"
  ]*/
 
-var input = `for(;;)map();`;
-var input = `const a = (c = 1, map())`;
-var input = `1 && map()`;
-var input = `[1, map()]`;
-var input = `x = {a: 1, b: map()}`;
-var input = `const a=1, b=map();`;
-var input = `while(1){foo();map()};`;
-var input = `if (1)map()`;
-var input = `1 ? 2 : map()`;
-var input = `1 ? 2 : (3 ? map() : 4)`;
-
+// var input = `for(;;)map();`;
+// var input = `x=1,map()`; // x=1;c=1;$=xmap();
+// var input = `const x=1,b=(1,map())`; // x=1;c=1;$=xmap();
+// var input = `const a = (c = 1, map())`;
+// var input = `const c = 0, a = (1, map());`;
+// var input = `const c = 0, a = (c++, map())`;
+// var input = `1 && map()`;
+// var input = `[1, map()]`;
+// var input = `x = {a: 1, b: map()}`;
+// var input = `const a=1, b=map();`;
+// var input = `while(1){foo();map()};`;
+// var input = `if (1)map()`;
+// var input = `if (1);else map()`;
+// var input = `1 ? 2 : map()`;
+// var input = `1 ? 2 : (3 ? map() : 4)`;
+var input = `const b = 1 ? 2 : (2.1, (3 ? map() : 4))`;
 
 function parseCode(code) {
     const result = Babel.transform(code, {compact: false, presets: ['stage-0']});
@@ -566,13 +571,6 @@ const plugin = function (obj) {
                 makeStatement(nodePath.getSibling(i));
             }
         }
-        else if (t.isVariableDeclarator(parentNodePath)) {
-            console.log(parentNodePath);
-
-            for (var i = 0; i < parentNodePath.key; i++) {
-                makeStatement(parentNodePath.getSibling(i).get('init'));
-            }
-        }
         else if (t.isLogicalExpression(parentNodePath)) {
             if (nodePath.key == 'right') {
                 makeStatement(nodePath.getSibling('left'));
@@ -583,66 +581,144 @@ const plugin = function (obj) {
                 makeStatement(nodePath.getSibling(i));
             }
         }
+        return true;
     }
 
     function findExpressionStatement(path) {
         do {
-            if (t.isExpressionStatement(path.container)) {
+            if (t.isExpressionStatement(path.node) || t.isVariableDeclaration(path.node)) {
                 return path;
             }
         } while (path = path.parentPath);
     }
 
+    let counter = 0;
+
+    function replaceVariableDeclarationSequence(nodePath) {
+        const multipleDeclarations = nodePath.node.declarations.map(
+            decl => t.variableDeclaration(nodePath.node.kind, [t.variableDeclarator(decl.id, decl.init)]));
+        nodePath.replaceWithMultiple(multipleDeclarations);
+    }
+
+    function makeVariable(nodePath) {
+        const identifier = nodePath.scope.generateUidIdentifier('$');
+        const variable = t.variableDeclaration('var', [t.variableDeclarator(identifier, nodePath.node)]);
+        return identifier;
+    }
+
 
     function makeStatement(nodePath) {
-        const expStatement = findExpressionStatement(nodePath);
-        const identifier = nodePath.scope.generateUidIdentifier();
-        const variable = t.variableDeclaration('var', [t.variableDeclarator(identifier, nodePath.node)])
-        expStatement.insertBefore(variable);
-        nodePath.replaceWith(identifier);
+        console.log('makeStatement', nodePath);
+        counter++;
+        if (counter > 10) {
+            throw new Error('something wrong');
+        }
+        let expStatement = nodePath;
+        while (true) {
+            if (!expStatement.parentPath) {
+                break;
+            }
+            if (!check(expStatement)) {
+                return;
+            }
+
+            expStatement = expStatement.parentPath;
+            if (t.isStatement(expStatement)) {
+                break;
+            }
+        }
+        nodePath.replaceWith(t.assignmentExpression('=', makeVariable(nodePath), nodePath.node));
     }
 
 
     function makeStatementFromConditionExp(nodePath) {
         const expStatement = findExpressionStatement(nodePath);
-        const identifier = nodePath.scope.generateUidIdentifier();
-        const variable = t.variableDeclaration('var', [t.variableDeclarator(identifier, t.nullLiteral())]);
+        const identifier = makeVariable(nodePath);
+        const variable = t.variableDeclaration('var', [t.variableDeclarator(identifier)]);
         const ifStatement = t.ifStatement((nodePath.node.test),
             t.expressionStatement(t.assignmentExpression("=", identifier, (nodePath.node.consequent))),
             t.expressionStatement(t.assignmentExpression("=", identifier, (nodePath.node.alternate)))
         );
-        const insertedPathNodes = expStatement.insertBefore([variable, ifStatement]);
-        const ifStatementPathNode = insertedPathNodes[0].get("body")[1];
+        // const a2 = expStatement.insertBefore(ifStatement);
+        // const a1 = expStatement.insertBefore(variable);
+
+        const insertedPathNodes = expStatement.insertBefore(ifStatement);
+        // const ifStatementPathNode = insertedPathNodes[insertedPathNodes.length - 1];
+        // if (ifStatementPathNode) {
+        //     ifStatementPathNode.requeue();
+        // }
         nodePath.replaceWith(identifier);
-        // nodePath.resync();
+        for (var i = 0; i < insertedPathNodes.length; i++) {
+            var pathNode = insertedPathNodes[i];
+            pathNode.requeue();
+        }
+        // if (t.isIfStatement(ifStatementPathNode)){
+        // }
+        // console.log(ifStatementPathNode);
+        //
+        // ifStatementPathNode.resync();
     }
 
+    function makeStatementsFromSequenceExp(nodePath) {
+        const identifier = makeVariable(nodePath);
+        const expStatement = findExpressionStatement(nodePath);
+        const expressions = nodePath.node.expressions;
+        const statements = expressions.map(exp => t.expressionStatement(exp));
+        statements.pop();
+        const lastStatement = t.expressionStatement(t.assignmentExpression('=', identifier, expressions[expressions.length - 1]));
+        statements.push(lastStatement);
+
+        expStatement.insertBefore(statements);
+        nodePath.replaceWith(identifier);
+    }
+
+
+    let p = 0;
     return {
         visitor: {
             CallExpression: {
+                exit(nodePath) {
+                    console.log("exit", nodePath.node.callee.name);
+                },
                 enter(nodePath) {
+                    if (p++ > 10) {
+                        throw new Error('something wrong');
+                    }
+
+                    console.log("enter", nodePath.node.callee.name);
                     if (nodePath.node.callee.name == 'map') {
 
-                        let parentPath = nodePath;
-                        const noExprParents = [];
-                        while (parentPath = parentPath.parentPath) {
-                            if (!t.isStatement(parentPath) && !t.isBlock(parentPath)) {
-                                noExprParents.push(parentPath);
-                            }
-                        }
-                        let resynced = false;
-                        for (var i = noExprParents.length - 1; i >= 0; i--) {
-                            var parent = noExprParents[i];
-                            if (t.isConditionalExpression(parent)) {
-                                makeStatementFromConditionExp(parent);
-                                resynced = true;
+
+                        let path = nodePath;
+                        const expressionParents = [];
+                        while (path = path.parentPath) {
+                            if (!t.isBlock(path)) {
+                                expressionParents.push(path);
                             }
                         }
 
-                        if (!resynced) {
-                            nodePath.node.callee.name = 'xmap';
-                            makeStatement(nodePath);
+
+                        const topParent = expressionParents[expressionParents.length - 1];
+                        if (t.isVariableDeclaration(topParent)) {
+                            if (topParent.node.declarations.length > 1) {
+                                replaceVariableDeclarationSequence(topParent);
+                                return;
+                            }
                         }
+                        for (var i = expressionParents.length - 1; i >= 0; i--) {
+                            var parent = expressionParents[i];
+                            if (t.isSequenceExpression(parent)) {
+                                makeStatementsFromSequenceExp(parent);
+                                return;
+                            }
+                            if (t.isConditionalExpression(parent)) {
+                                makeStatementFromConditionExp(parent);
+                                return
+                            }
+                        }
+
+                        // nodePath.node.callee.name = 'xmap';
+                        // makeStatement(nodePath);
                         // console.log('CallExpressionEnter', formatAst(nodePath.node));
                     }
                 },
@@ -654,7 +730,8 @@ const plugin = function (obj) {
         }
     }
 };
-var output = Babel.transform(input, {plugins: [plugin], compact: false, presets: ['stage-0']});
+console.log(input);
+var output = Babel.transform(input, {plugins: [plugin], compact: true, presets: ['stage-0']});
 console.log(output.code);
 console.log(output.ast);
 
