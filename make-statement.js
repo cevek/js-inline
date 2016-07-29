@@ -500,21 +500,106 @@
  ]*/
 
 // var input = `for(;;)map();`;
-// var input = `x=1,map()`; // x=1;c=1;$=xmap();
-// var input = `const x=1,b=(1,map())`; // x=1;c=1;$=xmap();
+// var input = `x=1,map()`;
+// var input = `const x=1,b=map()`;
 // var input = `const a = (c = 1, map())`;
-// var input = `const c = 0, a = (1, map());`;
-// var input = `const c = 0, a = (c++, map())`;
+// var input = `const x=1,b=(1,map())`;
 // var input = `1 && map()`;
+// var input = `1 || map()`;
 // var input = `[1, map()]`;
 // var input = `x = {a: 1, b: map()}`;
-// var input = `const a=1, b=map();`;
 // var input = `while(1){foo();map()};`;
 // var input = `if (1)map()`;
 // var input = `if (1);else map()`;
 // var input = `1 ? 2 : map()`;
 // var input = `1 ? 2 : (3 ? map() : 4)`;
-var input = `const b = 1 ? 2 : (2.1, (3 ? map() : 4))`;
+// var input = `const b = 1 ? 2 : (2.1, (3 ? map() : 4))`;
+// var input = `function render(){ return div(this.show ? div(this.item && div(map())) : null) }`;
+
+const tests = {
+    simpleFor: {
+        source: 'for(;;)map();',
+        output: 'for(;;){_$=xmap();_$;}'
+    },
+    simpleWhile: {
+        source: 'while(1){foo();map()};',
+        output: 'while(1){foo();_$=xmap();_$;};'
+    },
+    simpleSequence: {
+        source: 'x=1,map()',
+        output: 'x=1;_$2=xmap();_$=_$2;_$;'
+    },
+    simpleVariableSequence: {
+        source: 'const x=1,b=map()',
+        output: 'const x=1;_$=xmap();const b=_$;'
+    },
+    simpleVariableWithInnerSequence: {
+        source: 'const a = (c = 1, map())',
+        output: 'c=1;_$2=xmap();_$=_$2;const a=_$;'
+    },
+    simpleVariableSequenceWithInnerSequence: {
+        source: 'const x=1,b=(1,map())',
+        output: 'const x=1;1;_$2=xmap();_$=_$2;const b=_$;'
+    },
+    simpleLogicalAnd: {
+        source: '1 && map()',
+        output: '_$=1;if(_$){_$2=xmap();_$=_$2;}_$;'
+    },
+    simpleLogicalOr: {
+        source: '1 || map()',
+        output: '_$=1;if(!_$){_$2=xmap();_$=_$2;}_$;'
+    },
+    simpleArray: {
+        source: '[1, map()]',
+        output: '_$=1;_$2=xmap();[_$,_$2];'
+    },
+
+    simpleObject: {
+        source: 'x = {a: 1, b: map()}',
+        output: '_$=1;_$2=xmap();x={a:_$,b:_$2};'
+    },
+
+    simpleIf: {
+        source: 'if (1)map()',
+        output: 'if(1){_$=xmap();_$;}'
+    },
+    simpleIfElse: {
+        source: 'if (1);else map()',
+        output: 'if(1);else{_$=xmap();_$;}'
+    },
+    simpleCondExp: {
+        source: '1 ? 2 : map()',
+        output: 'if(1)_$=2;else{_$2=xmap();_$=_$2;}_$;'
+    },
+    condExpInsideCondExp: {
+        source: '1 ? 2 : (3 ? map() : 4)',
+        output: 'if(1)_$=2;else{if(3){_$3=xmap();_$2=_$3;}else _$2=4;_$=_$2;}_$;'
+    },
+    assignmentCondExpWithSequenceInsideCondExp: {
+        source: 'const b = 1 ? 2 : (2.1, (3 ? map() : 4))',
+        output: 'if(1)_$=2;else{2.1;if(3){_$4=xmap();_$3=_$4;}else _$3=4;_$2=_$3;_$=_$2;}const b=_$;'
+    },
+
+    condExpWithInnerLogicalInsideCallExp: {
+        source: 'function render(){ return div(this.show ? div(this.item && div(map())) : null) }',
+        output: 'function render(){if(this.show){_$2=this.item;if(_$2){_$3=xmap();_$2=div(_$3);}_$=div(_$2);}else _$=null;return div(_$);}'
+    },
+
+};
+
+function render() {
+    if (this.show) {
+        _$2 = this.item();
+        if (_$2) {
+            _$3 = xmap();
+            _$2 = div(_$3)
+        }
+        _$ = div(_$2);
+    } else _$ = null;
+
+    return div(_$);
+}
+
 
 function parseCode(code) {
     const result = Babel.transform(code, {compact: false, presets: ['stage-0']});
@@ -571,22 +656,12 @@ const plugin = function (obj) {
                 makeStatement(nodePath.getSibling(i));
             }
         }
-        else if (t.isLogicalExpression(parentNodePath)) {
-            if (nodePath.key == 'right') {
-                makeStatement(nodePath.getSibling('left'));
-            }
-        }
-        else if (t.isSequenceExpression(parentNodePath)) {
-            for (var i = 0; i < nodePath.key; i++) {
-                makeStatement(nodePath.getSibling(i));
-            }
-        }
         return true;
     }
 
     function findExpressionStatement(path) {
         do {
-            if (t.isExpressionStatement(path.node) || t.isVariableDeclaration(path.node)) {
+            if (t.isStatement(path.node)) {
                 return path;
             }
         } while (path = path.parentPath);
@@ -594,10 +669,13 @@ const plugin = function (obj) {
 
     let counter = 0;
 
+
     function replaceVariableDeclarationSequence(nodePath) {
         const multipleDeclarations = nodePath.node.declarations.map(
             decl => t.variableDeclaration(nodePath.node.kind, [t.variableDeclarator(decl.id, decl.init)]));
         nodePath.replaceWithMultiple(multipleDeclarations);
+        printCode("replaceVariableDeclarationSequence", nodePath);
+
     }
 
     function makeVariable(nodePath) {
@@ -606,11 +684,15 @@ const plugin = function (obj) {
         return identifier;
     }
 
+    function printCode(title, nodePath) {
+        console.log(title, Babel.transformFromAst(nodePath.hub.file.ast, '', {compact: true}).code);
+    }
+
 
     function makeStatement(nodePath) {
         console.log('makeStatement', nodePath);
         counter++;
-        if (counter > 10) {
+        if (counter > 100) {
             throw new Error('something wrong');
         }
         let expStatement = nodePath;
@@ -627,7 +709,11 @@ const plugin = function (obj) {
                 break;
             }
         }
-        nodePath.replaceWith(t.assignmentExpression('=', makeVariable(nodePath), nodePath.node));
+        const identifier = makeVariable(nodePath);
+        const assignment = t.expressionStatement(t.assignmentExpression('=', identifier, nodePath.node));
+        expStatement.insertBefore(assignment);
+        nodePath.replaceWith(identifier);
+        printCode("makeStatementAfter", nodePath);
     }
 
 
@@ -652,6 +738,38 @@ const plugin = function (obj) {
             var pathNode = insertedPathNodes[i];
             pathNode.requeue();
         }
+        printCode("makeStatementFromConditionExp", nodePath);
+
+        // if (t.isIfStatement(ifStatementPathNode)){
+        // }
+        // console.log(ifStatementPathNode);
+        //
+        // ifStatementPathNode.resync();
+    }
+
+
+    function replaceLogicalToIfStatement(nodePath) {
+        const expStatement = findExpressionStatement(nodePath);
+        const identifier = makeVariable(nodePath);
+        const assignment = t.expressionStatement(t.assignmentExpression("=", identifier, (nodePath.node.left)));
+        const test = nodePath.node.operator == '&&' ? identifier : t.unaryExpression('!', identifier);
+        const consequent = t.expressionStatement(t.assignmentExpression("=", identifier, (nodePath.node.right)));
+        const ifStatement = t.ifStatement(test, consequent);
+
+        const insertedPathNodes = expStatement.insertBefore([assignment, ifStatement]);
+        // const ifStatementPathNode = insertedPathNodes[insertedPathNodes.length - 1];
+        // if (ifStatementPathNode) {
+        //     ifStatementPathNode.requeue();
+        // }
+        nodePath.replaceWith(identifier);
+        /*
+         for (var i = 0; i < insertedPathNodes.length; i++) {
+         var pathNode = insertedPathNodes[i];
+         pathNode.requeue();
+         }
+         */
+        printCode("replaceAndLogicalToIfStatement", nodePath);
+
         // if (t.isIfStatement(ifStatementPathNode)){
         // }
         // console.log(ifStatementPathNode);
@@ -670,6 +788,7 @@ const plugin = function (obj) {
 
         expStatement.insertBefore(statements);
         nodePath.replaceWith(identifier);
+        printCode("makeStatementsFromSequenceExp", nodePath);
     }
 
 
@@ -680,8 +799,8 @@ const plugin = function (obj) {
                 exit(nodePath) {
                     console.log("exit", nodePath.node.callee.name);
                 },
-                enter(nodePath) {
-                    if (p++ > 10) {
+                enter(nodePath, plugPass) {
+                    if (p++ > 100) {
                         throw new Error('something wrong');
                     }
 
@@ -702,6 +821,7 @@ const plugin = function (obj) {
                         if (t.isVariableDeclaration(topParent)) {
                             if (topParent.node.declarations.length > 1) {
                                 replaceVariableDeclarationSequence(topParent);
+                                // printCode("exit because replace variable sequence", nodePath);
                                 return;
                             }
                         }
@@ -709,16 +829,23 @@ const plugin = function (obj) {
                             var parent = expressionParents[i];
                             if (t.isSequenceExpression(parent)) {
                                 makeStatementsFromSequenceExp(parent);
+                                // printCode("exit because replace sequence to statements", nodePath);
                                 return;
                             }
                             if (t.isConditionalExpression(parent)) {
                                 makeStatementFromConditionExp(parent);
+                                // printCode("exit because replace conditional expression", nodePath);
+                                return
+                            }
+                            if (t.isLogicalExpression(parent)) {
+                                replaceLogicalToIfStatement(parent);
+                                // printCode("exit because replace conditional expression", nodePath);
                                 return
                             }
                         }
 
-                        // nodePath.node.callee.name = 'xmap';
-                        // makeStatement(nodePath);
+                        nodePath.node.callee.name = 'xmap';
+                        makeStatement(nodePath);
                         // console.log('CallExpressionEnter', formatAst(nodePath.node));
                     }
                 },
@@ -730,10 +857,19 @@ const plugin = function (obj) {
         }
     }
 };
-console.log(input);
-var output = Babel.transform(input, {plugins: [plugin], compact: true, presets: ['stage-0']});
-console.log(output.code);
-console.log(output.ast);
+const keys = Object.keys(tests);
+
+for (var i = 0; i < keys.length; i++) {
+    const testName = keys[i];
+    const test = tests[testName];
+    // console.log(input);
+    const output = Babel.transform(test.source, {plugins: [plugin], compact: true, presets: ['stage-0']});
+    // console.log(output.code);
+
+    if (test.output !== output.code) {
+        console.error(`Test ${testName} is not passed. \nResult:   ${output.code}\nExpected: ${test.output}`);
+    }
+}
 
 
 // console.log(output);
