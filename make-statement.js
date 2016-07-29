@@ -521,6 +521,18 @@ const tests = {
         source: 'for(;;)map();',
         output: 'for(;;){_$=xmap();_$;}'
     },
+    _forInit: {
+        source: 'for(a = map();;);',
+        output: 'for(a=map();;);'
+    },
+    _forInitWithVar: {
+        source: 'for(var a = map();;);',
+        output: 'for(var a=map();;);'
+    },
+    _forInitWithComplexVar: {
+        source: 'for(var a = 1, b = a + map();;);',
+        output: 'for(var a=1,b=a+map();;);'
+    },
     simpleWhile: {
         source: 'while(1){foo();map()};',
         output: 'while(1){foo();_$=xmap();_$;};'
@@ -528,6 +540,10 @@ const tests = {
     simpleSequence: {
         source: 'x=1,map()',
         output: 'x=1;_$2=xmap();_$=_$2;_$;'
+    },
+    sequenceWithBinaryExp: {
+        source: 'x==1,map()',
+        output: 'x==1;_$2=xmap();_$=_$2;_$;'
     },
     simpleVariableSequence: {
         source: 'const x=1,b=map()',
@@ -656,12 +672,21 @@ const plugin = function (obj) {
                 makeStatement(nodePath.getSibling(i));
             }
         }
+        else if (t.isForStatement(parentNodePath) && nodePath.key == 'init') {
+            return false;
+        }
         return true;
     }
 
+
+    function isVariableDeclarationInInitForStatement(path) {
+        return t.isVariableDeclaration(path.node) && t.isForStatement(path.parentPath.node) && path.key == 'init';
+    }
+
+
     function findExpressionStatement(path) {
         do {
-            if (t.isStatement(path.node)) {
+            if (t.isStatement(path.node) && !isVariableDeclarationInInitForStatement(path)) {
                 return path;
             }
         } while (path = path.parentPath);
@@ -701,11 +726,13 @@ const plugin = function (obj) {
                 break;
             }
             if (!check(expStatement)) {
+                console.error('Cannot make statement', expStatement);
+
                 return;
             }
 
             expStatement = expStatement.parentPath;
-            if (t.isStatement(expStatement)) {
+            if (t.isStatement(expStatement) && !isVariableDeclarationInInitForStatement(expStatement)) {
                 break;
             }
         }
@@ -791,6 +818,13 @@ const plugin = function (obj) {
         printCode("makeStatementsFromSequenceExp", nodePath);
     }
 
+    function replaceForInitToStatement(path) {
+        path.insertBefore(path.node.init);
+        path.node.init = null;
+        printCode("replaceForInitToStatement", path);
+
+    }
+
 
     let p = 0;
     return {
@@ -827,6 +861,7 @@ const plugin = function (obj) {
                         }
                         for (var i = expressionParents.length - 1; i >= 0; i--) {
                             var parent = expressionParents[i];
+                            const next = expressionParents[i - 1];
                             if (t.isSequenceExpression(parent)) {
                                 makeStatementsFromSequenceExp(parent);
                                 // printCode("exit because replace sequence to statements", nodePath);
@@ -840,6 +875,13 @@ const plugin = function (obj) {
                             if (t.isLogicalExpression(parent)) {
                                 replaceLogicalToIfStatement(parent);
                                 // printCode("exit because replace conditional expression", nodePath);
+                                return
+                            }
+                            if (t.isForStatement(parent) && next && next.key == 'init') {
+                                // replaceForInitToStatement(parent);
+                                // printCode("exit because replace conditional expression", nodePath);
+                                console.error('Cannot make statement');
+
                                 return
                             }
                         }
@@ -859,10 +901,8 @@ const plugin = function (obj) {
 };
 const keys = Object.keys(tests);
 
-for (var i = 0; i < keys.length; i++) {
-    const testName = keys[i];
+function test(testName) {
     const test = tests[testName];
-    // console.log(input);
     const output = Babel.transform(test.source, {plugins: [plugin], compact: true, presets: ['stage-0']});
     // console.log(output.code);
 
@@ -870,6 +910,14 @@ for (var i = 0; i < keys.length; i++) {
         console.error(`Test ${testName} is not passed. \nResult:   ${output.code}\nExpected: ${test.output}`);
     }
 }
+
+for (var i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key[0] !== '_') {
+        test(key);
+    }
+}
+// test('forInit');
 
 
 // console.log(output);
