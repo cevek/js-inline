@@ -14,7 +14,7 @@ const tests = {
             `
         },
         source: 'map()',
-        output: '{var arr,_mapResult;_map:{"use strict";const len=arr.length;const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=arr[i];}_mapResult=newArr;break _map;}}_mapResult;'
+        output: '{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=arr[i];}}}'
     },
     withUsingVars: {
         inline: {
@@ -31,7 +31,7 @@ const tests = {
             `
         },
         source: 'var i, _i, arr, len, newArr; map(1)',
-        output: 'var i,_i,arr,len,newArr;{var _arr=1,_mapResult;_map:{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;break _map;}}_mapResult;'
+        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}}}'
     },
     withUsingVarsAndAssignment: {
         inline: {
@@ -48,7 +48,7 @@ const tests = {
             `
         },
         source: 'var i, _i, arr, len, newArr; const foo = map(1)',
-        output: 'var i,_i,arr,len,newArr;{var _arr=1,_mapResult;_map:{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;break _map;}}const foo=_mapResult;'
+        output: 'var i,_i,arr,len,newArr;{var _arr=1,_mapResult;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;}}const foo=_mapResult;'
     },
     insideFunctionWithUsingVars: {
         inline: {
@@ -65,7 +65,7 @@ const tests = {
             `
         },
         source: 'var i, len, newArr; function abc(){let arr, _i; return map(1)}',
-        output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1,_mapResult;_map:{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;break _map;}}return _mapResult;}'
+        output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1,_mapResult;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;}}return _mapResult;}'
     },
     xmap: {
         inline: {
@@ -80,9 +80,9 @@ const tests = {
             `,
         },
         source: 'var len; var data = xmap()',
-        output: 'var len;{var arr,_xmapResult;_xmap:{const _len=arr.length;function foo(){return _len;}_xmapResult=_len+1;break _xmap;}}var data=_xmapResult;'
+        output: 'var len;{var arr,_xmapResult;{const _len=arr.length;function foo(){return _len;}_xmapResult=_len+1;}}var data=_xmapResult;'
     },
-    fooArguments: {
+    fooEmptyArguments: {
         inline: {
             'foo': `
                 function foo() {
@@ -93,7 +93,21 @@ const tests = {
             `
         },
         source: 'foo()',
-        output: '{var _fooResult,_arguments=[];_foo:{var sum=0;for(var i=0;i<_arguments.length;i++)sum+=_arguments[i];_fooResult=sum;break _foo;}}_fooResult;'
+        output: '{var _arguments=[];{var sum=0;for(var i=0;i<_arguments.length;i++)sum+=_arguments[i];}}'
+    },
+
+    fooArguments: {
+        inline: {
+            'foo': `
+                function foo() {
+                  var sum = 0;
+                  for (var i=0; i<arguments.length; i++) sum+=arguments[i];
+                  return sum;
+                }
+            `
+        },
+        source: 'foo(1,2,3)',
+        output: '{var _arguments=[1,2,3];{var sum=0;for(var i=0;i<_arguments.length;i++)sum+=_arguments[i];}}'
     },
     fooMap: {
         inline: {
@@ -115,8 +129,8 @@ const tests = {
                }
             `
         },
-        source: 'var i; bar()',
-        output: 'var i;{var _barResult;_bar:{let sum,_i;{var arr,_mapResult;_map:{"use strict";const len=arr.length;const newArr=new Array(len);for(var _i2=0;_i2<len;_i2++){newArr[_i2]=arr[_i2];}_mapResult=newArr;break _map;}}_barResult=_mapResult;break _bar;}}_barResult;'
+        source: 'var i; i = bar()',
+        output: 'var i;{{let sum,_i;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var _i2=0;_i2<len;_i2++){newArr[_i2]=arr[_i2];}i=newArr;}}}}'
     },
 
     this: {
@@ -133,8 +147,8 @@ const tests = {
                 }
             `
         },
-        source: 'array.mapThis()',
-        output: '{var _mapThisResult,_this=array;_mapThis:{const len=_this.length;function x(){return this;}const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=fn(_this[i]);}_mapThisResult=newArr;break _mapThis;}}_mapThisResult;'
+        source: 'var _this; array.mapThis()',
+        output: 'var _this;{var _this2=array;{const len=_this2.length;function x(){return this;}const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=fn(_this2[i]);}}}'
     },
 
     arguments: {
@@ -150,11 +164,31 @@ const tests = {
                }
             `,
         },
-        source: 'mapArguments(1,2,3)',
-        output: '{var _mapArgumentsResult,_arguments=[1,2,3];_mapArguments:{function x(){return arguments;}let sum=0;for(var i=0;i<_arguments.length;i++){sum+=_arguments[i];}_mapArgumentsResult=sum;break _mapArguments;}}_mapArgumentsResult;'
+        source: 'var _arguments; mapArguments(1,2,3)',
+        output: 'var _arguments;{var _arguments2=[1,2,3];{function x(){return arguments;}let sum=0;for(var i=0;i<_arguments2.length;i++){sum+=_arguments2[i];}}}'
+    },
+
+    manyReturns: {
+        inline: {
+            'manyReturns': `
+               function manyReturns(sum) {
+                    function x(){return x}
+                    while(1) {
+                        return sum;    
+                    }
+                    if (1) {
+                        return sum;    
+                    }       
+                    return sum;
+               }
+            `,
+        },
+        source: 'const a = manyReturns()',
+        output: '{var sum,_manyReturnsResult;_manyReturns:{function x(){return x;}while(1){_manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
     },
 
 };
+
 
 
 function printCode(title, nodePath, ast) {
@@ -166,6 +200,17 @@ function formatAst(ast) {
     return JSON.stringify(ast, (k, v) => k == 'start' || k == 'end' || k == 'loc' ? void 0 : v, 3);
 }
 
+
+function parentsHasTargetFunction(path) {
+    const parents = path.getAncestry();
+    for (var i = 0; i < parents.length; i++) {
+        var parent = parents[i];
+        if (t.isFunction(parent)) {
+            return parent._targetFunction;
+        }
+    }
+    return false;
+}
 
 
 const _limit = {};
@@ -183,73 +228,44 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     window.t = t;
     window.pluginObj = obj;
     const parentScope = parentPath.scope;
+    const parentParentPath = parentPath.parentPath;
 
+    const callIsStatement = t.isExpressionStatement(parentParentPath);
+    const useParentResultIdentifier = t.isAssignmentExpression(parentParentPath) && t.isIdentifier(parentParentPath.node.left) && parentParentPath.node.operator == '=';
+    let resultIdentifier = callIsStatement ? null : (useParentResultIdentifier ? parentParentPath.node.left : null);
 
-    let resultIdentifier;
     let labelIdentifier;
-    let functionEntered = false;
-    let variables = [];
-    let thisIdentifier = parentScope.generateUidIdentifier('this');
-    let thisValue = t.isMemberExpression(parentPath.node.callee) ? parentPath.node.callee.object : t.nullLiteral();
+    const variables = [];
+    const thisIdentifier = parentScope.generateUidIdentifier('this');
+    const thisValue = t.isMemberExpression(parentPath.node.callee) ? parentPath.node.callee.object : t.nullLiteral();
     let thisAssigned = false;
 
     let argumentsAssigned = false;
     const argumentsIdentifier = parentScope.generateUidIdentifier('arguments');
-    let argumentsProps;
-    let argumentsDeclarator;
+    const argumentsDeclarator = t.variableDeclarator(argumentsIdentifier, t.arrayExpression(parentPath.node.arguments));
+
+    const replaceBody = [];
+    let usedBreaks = false;
+
 
     return {
         visitor: {
-            Identifier: {
-                enter(path) {
-                    if (path.node.name == 'arguments') {
-                        if (path.getAncestry().filter(path => t.isFunction(path)).length > 0) {
-                            return;
-                        }
-                        if (!argumentsAssigned) {
-                            argumentsAssigned = true;
-                            variables.push(argumentsDeclarator);
-                        }
-                        path.replaceWith(argumentsIdentifier);
-                    }
-                }
-            },
-
-            ThisExpression: {
-                enter(path) {
-                    if (path.getAncestry().filter(path => t.isFunction(path)).length > 0) {
-                        return;
-                    }
-                    if (!thisAssigned) {
-                        thisAssigned = true;
-                        variables.push(t.variableDeclarator(thisIdentifier, thisValue));
-                    }
-                    path.replaceWith(thisIdentifier);
-                }
-            },
-
             FunctionDeclaration: {
                 enter(path) {
-                    if (functionEntered) {
+                    if (!t.isProgram(path.parentPath)) {
                         return;
                     }
-                    functionEntered = true;
+                    checkLimitCall('SourcePreparerFunctionExit');
+                    labelIdentifier = parentScope.generateUidIdentifier(path.node.id.name);
+                    variables.push(...path.node.params.map((id, i) => t.variableDeclarator(id, parentPath.node.arguments[i])));
+
+                    if (!useParentResultIdentifier && !callIsStatement) {
+                        resultIdentifier = parentScope.generateUidIdentifier(path.node.id.name + 'Result');
+                        variables.push(t.variableDeclarator(resultIdentifier));
+                    }
+                    path._targetFunction = true;
                     const body = path.get('body');
                     const scope = body.scope;
-                    checkLimitCall('SourcePreparerFunctionEnter');
-
-                    argumentsDeclarator = t.variableDeclarator(argumentsIdentifier, t.arrayExpression(parentPath.node.arguments));
-
-                    labelIdentifier = parentScope.generateUidIdentifier(path.node.id.name);
-                    resultIdentifier = parentScope.generateUidIdentifier(path.node.id.name + 'Result');
-
-                    if (path.getAncestry().filter(path => t.isFunction(path)).length > 1) {
-                        return;
-                    }
-
-                    variables = path.node.params.map((id, i) => t.variableDeclarator(id, parentPath.node.arguments[i]));
-                    variables.push(t.variableDeclarator(resultIdentifier));
-                    const args = t.variableDeclaration('var', variables);
 
                     const allBindings = scope.getAllBindings();
                     const keys = Object.keys(allBindings);
@@ -261,23 +277,95 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                             scope.rename(key, newKey);
                         }
                     }
-                    path.replaceWith(t.blockStatement([args, t.labeledStatement(labelIdentifier, body.node)]));
 
+                },
+                exit(path) {
+                    if (!t.isProgram(path.parentPath)) {
+                        return;
+                    }
+                    checkLimitCall('SourcePreparerFunctionEnter');
+
+                    const body = path.get('body');
+
+                    if (variables.length) {
+                        replaceBody.push(t.variableDeclaration('var', variables));
+                    }
+
+                    if (usedBreaks) {
+                        replaceBody.push(t.labeledStatement(labelIdentifier, body.node));
+                    } else {
+                        replaceBody.push(body.node);
+                    }
+
+                    path.replaceWith(t.blockStatement(replaceBody));
 
                     const parentStatement = parentPath.getStatementParent();
                     parentStatement.insertBefore(path.node);
-                    parentPath.replaceWith(resultIdentifier);
+
+                    if (useParentResultIdentifier || callIsStatement) {
+                        parentParentPath.remove();
+                    } else {
+                        parentPath.replaceWith(resultIdentifier);
+                    }
                 }
             },
-            ReturnStatement: {
+
+            Identifier: {
                 enter(path) {
-                    checkLimitCall('SourcePreparerReturnEnter');
-                    if (path.getAncestry().filter(path => t.isFunction(path)).length > 0) {
+                    if (path.node.name == 'arguments') {
+                        if (!parentsHasTargetFunction(path)) {
+                            return;
+                        }
+                        checkLimitCall('SourcePreparerIdentifierEnter');
+                        if (!argumentsAssigned) {
+                            argumentsAssigned = true;
+                            variables.push(argumentsDeclarator);
+                        }
+                        path.replaceWith(argumentsIdentifier);
+                    }
+                }
+            },
+
+            ThisExpression: {
+                enter(path) {
+                    if (!parentsHasTargetFunction(path)) {
                         return;
                     }
+                    checkLimitCall('SourcePreparerThisEnter');
+                    if (!thisAssigned) {
+                        thisAssigned = true;
+                        variables.push(t.variableDeclarator(thisIdentifier, thisValue));
+                    }
+                    path.replaceWith(thisIdentifier);
+                }
+            },
 
-                    const assignResult = t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument));
-                    path.replaceWithMultiple([assignResult, t.breakStatement(labelIdentifier)]);
+            ReturnStatement: {
+                enter(path) {
+                    if (!parentsHasTargetFunction(path)) {
+                        return;
+                    }
+                    checkLimitCall('SourcePreparerReturnEnter');
+                    const isLastReturn = t.isBlockStatement(path.parentPath) && t.isFunction(path.parentPath.parentPath) && path.key === path.container.length - 1;
+                    if (!isLastReturn) {
+                        usedBreaks = true;
+                    }
+
+                    if (resultIdentifier) {
+                        const replace = [];
+                        replace.push(t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument)));
+                        if (!isLastReturn) {
+                            replace.push(t.breakStatement(labelIdentifier));
+                        }
+                        path.replaceWithMultiple(replace);
+                    } else {
+                        if (isLastReturn) {
+                            path.remove();
+                        } else {
+                            path.replaceWith(t.breakStatement(labelIdentifier));
+                        }
+                    }
+
                 }
             }
         }
@@ -321,7 +409,7 @@ function test(testName) {
     const test = tests[testName];
     const output = Babel.transform(test.source, {plugins: [plugin(test.inline)], compact: true, presets: ['stage-0']});
     if (test.output !== output.code) {
-        console.error(`Test ${testName} is not passed. \nResult:   ${output.code}\nExpected: ${test.output}`);
+        console.error(`Test ${testName} is not passed.\nSource:   ${test.source}\nResult:   ${output.code}\nExpected: ${test.output}`);
     }
 }
 
