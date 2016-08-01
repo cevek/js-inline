@@ -48,7 +48,7 @@ const tests = {
             `
         },
         source: 'var i, _i, arr, len, newArr; const foo = map(1)',
-        output: 'var i,_i,arr,len,newArr;{var _arr=1,_mapResult;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;}}const foo=_mapResult;'
+        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var _mapResult=_newArr;}}const foo=_mapResult;'
     },
     insideFunctionWithUsingVars: {
         inline: {
@@ -65,7 +65,7 @@ const tests = {
             `
         },
         source: 'var i, len, newArr; function abc(){let arr, _i; return map(1)}',
-        output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1,_mapResult;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}_mapResult=_newArr;}}return _mapResult;}'
+        output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var _mapResult=_newArr;}}return _mapResult;}'
     },
     xmap: {
         inline: {
@@ -80,7 +80,7 @@ const tests = {
             `,
         },
         source: 'var len; var data = xmap()',
-        output: 'var len;{var arr,_xmapResult;{const _len=arr.length;function foo(){return _len;}_xmapResult=_len+1;}}var data=_xmapResult;'
+        output: 'var len;{var arr;{const _len=arr.length;function foo(){return _len;}var _xmapResult=_len+1;}}var data=_xmapResult;'
     },
     fooEmptyArguments: {
         inline: {
@@ -184,7 +184,7 @@ const tests = {
             `,
         },
         source: 'const a = manyReturns()',
-        output: '{var sum,_manyReturnsResult;_manyReturns:{function x(){return x;}while(1){_manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
+        output: '{var sum;_manyReturns:{function x(){return x;}while(1){var _manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
     },
 
 };
@@ -192,7 +192,7 @@ const tests = {
 
 
 function printCode(title, nodePath, ast) {
-    console.log(title, Babel.transformFromAst(ast || nodePath.hub.file.ast, '', {compact: true}).code);
+    console.log(title, Babel.transformFromAst(ast || nodePath.hub.file.ast, '', {compact: false}).code);
 }
 
 
@@ -233,6 +233,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     const callIsStatement = t.isExpressionStatement(parentParentPath);
     const useParentResultIdentifier = t.isAssignmentExpression(parentParentPath) && t.isIdentifier(parentParentPath.node.left) && parentParentPath.node.operator == '=';
     let resultIdentifier = callIsStatement ? null : (useParentResultIdentifier ? parentParentPath.node.left : null);
+    let resultIsDeclared = false;
 
     let labelIdentifier;
     const variables = [];
@@ -247,21 +248,37 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     const replaceBody = [];
     let usedBreaks = false;
 
+    function checkFunctionIsTop(path){
+        return (t.isExpressionStatement(path.parentPath) && t.isProgram(path.parentPath.parentPath));
+    }
+
+    function getParentStatement(path){
+        do {
+            if (!path.parentPath || path.isStatement()) {
+                break;
+            } else {
+                path = path.parentPath;
+            }
+        } while (path);
+        return path;
+    }
+
 
     return {
         visitor: {
-            FunctionDeclaration: {
+            Function: {
                 enter(path) {
-                    if (!t.isProgram(path.parentPath)) {
+                    if (!checkFunctionIsTop(path)) {
                         return;
                     }
                     checkLimitCall('SourcePreparerFunctionExit');
-                    labelIdentifier = parentScope.generateUidIdentifier(path.node.id.name);
-                    variables.push(...path.node.params.map((id, i) => t.variableDeclarator(id, parentPath.node.arguments[i])));
+
+                    const fnName =  path.node.id ? path.node.id.name : path.scope.generateUid();
+                    labelIdentifier = parentScope.generateUidIdentifier(fnName);
+
 
                     if (!useParentResultIdentifier && !callIsStatement) {
-                        resultIdentifier = parentScope.generateUidIdentifier(path.node.id.name + 'Result');
-                        variables.push(t.variableDeclarator(resultIdentifier));
+                        resultIdentifier = parentScope.generateUidIdentifier(fnName + 'Result');
                     }
                     path._targetFunction = true;
                     const body = path.get('body');
@@ -272,15 +289,51 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     for (let i = 0; i < keys.length; i++) {
                         const key = keys[i];
+                        const binding = allBindings[key];
                         if (parentScope.hasBinding(key)) {
                             const newKey = parentScope.generateUid(key);
                             scope.rename(key, newKey);
                         }
                     }
 
+
+                    const skipArguments = [];
+                    parentPath.node.arguments.forEach((arg, i) => {
+                        if (parentPath.node && t.isFunction(arg)) {
+                            const node = path.node.params[i];
+                            const callbackPath = parentPath.get('arguments')[i];
+                            const source = callbackPath.getSource();
+
+                            const callbackBinding = path.scope.bindings[node.name];
+                            for (let j = 0; j < callbackBinding.referencePaths.length; j++) {
+                                const refPath = callbackBinding.referencePaths[j];
+                                if (refPath.parentKey == 'callee') {
+                                    // console.log('inline', source, refPath.parentPath);
+                                    // printCode('before', refPath.parentPath);
+
+                                    inlinePath(source, refPath.parentPath);
+
+                                    //todo: update bindings
+                                    // printCode('after', refPath.parentPath);
+                                    // callbackPath.remove();
+                                    console.log(callbackPath.parentPath.getSource());
+                                    // console.log(callbackPath);
+
+                                }
+                            }
+                            skipArguments[i] = true;
+                        }
+                    });
+
+                    for (let i = 0; i < path.node.params.length; i++) {
+                        const param = path.node.params[i];
+                        if (!skipArguments[i]) {
+                            variables.push(t.variableDeclarator(param, parentPath.node.arguments[i]));
+                        }
+                    }
                 },
                 exit(path) {
-                    if (!t.isProgram(path.parentPath)) {
+                    if (!checkFunctionIsTop(path)) {
                         return;
                     }
                     checkLimitCall('SourcePreparerFunctionEnter');
@@ -297,10 +350,11 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         replaceBody.push(body.node);
                     }
 
-                    path.replaceWith(t.blockStatement(replaceBody));
+                    path.parentPath.replaceWith(t.blockStatement(replaceBody));
 
-                    const parentStatement = parentPath.getStatementParent();
-                    parentStatement.insertBefore(path.node);
+                    const parentStatement = getParentStatement(parentPath);
+
+                    parentStatement.insertBefore(path.parentPath.node);
 
                     if (useParentResultIdentifier || callIsStatement) {
                         parentParentPath.remove();
@@ -312,7 +366,8 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
             Identifier: {
                 enter(path) {
-                    if (path.node.name == 'arguments') {
+                    const name = path.node.name;
+                    if (name == 'arguments') {
                         if (!parentsHasTargetFunction(path)) {
                             return;
                         }
@@ -353,7 +408,12 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     if (resultIdentifier) {
                         const replace = [];
-                        replace.push(t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument)));
+                        if (resultIsDeclared || useParentResultIdentifier) {
+                            replace.push(t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument)));
+                        } else {
+                            replace.push(t.variableDeclaration('var', [t.variableDeclarator(resultIdentifier, path.node.argument)]));
+                            resultIsDeclared = true;
+                        }
                         if (!isLastReturn) {
                             replace.push(t.breakStatement(labelIdentifier));
                         }
@@ -373,7 +433,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 };
 
 function inlinePath(source, path) {
-    const output = Babel.transform(source, {plugins: [inlinerPlugin(path)], compact: true, presets: ['stage-0']});
+    const output = Babel.transform(`(${source})`, {plugins: [inlinerPlugin(path)], compact: false, presets: ['stage-0']});
     return output.ast;
 }
 
@@ -416,5 +476,24 @@ function test(testName) {
 const keys = Object.keys(tests);
 const onlyKeys = keys.filter(key => key[0] == '$');
 const testKeys = onlyKeys.length ? onlyKeys : keys.filter(key => key[0] !== '_');
-testKeys.forEach(test);
-console.log(`${testKeys.length} tests done`);
+// testKeys.forEach(test);
+// console.log(`${testKeys.length} tests done`);
+
+function inlineCode(source) {
+    const inline = {
+        map: `
+                function map(fn) {
+                    for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
+                        newArr[i] = fn(this[i]);
+                    return fn(1);
+                }
+        `
+    };
+    const output1 = Babel.transform(source, {compact: true, plugins: [plugin(inline)], presets: ['stage-0']});
+    output1.ast.tokens = null;
+    const output = Babel.transformFromAst(output1.ast, '', {presets: ['stage-0']});
+    // output.ast.tokens = null;
+    // printCode('x', null, output.ast);
+
+    return output.code;
+}
