@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+
+    <link rel="stylesheet" href="codemirror/codemirror.css">
+    <style type="text/css">
+        html, body, .editor {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        .editor {
+            display: flex;
+        }
+
+        .col {
+            flex: 1
+        }
+
+        .CodeMirror {
+            height: 100%;
+        }
+    </style>
+    <script src="codemirror/codemirror.js"></script>
+    <script src="codemirror/javascript.js"></script>
+    <script src="../babel/babel.js"></script>
+    <script src="../inline.js"></script>
+
+
+</head>
+<body>
+<div class="editor">
+    <div class="col source"></div>
+    <div class="col target"></div>
+</div>
+
+<script>
+    var editor1 = CodeMirror(document.querySelector('.source'), {mode: "javascript", lineNumbers: true});
+    function change(cm){
+        const value = cm.getValue();
+        localStorage.setItem('editorValue', value);
+//        try {
+        const newValue = inlineCode(value);
+        editor2.setValue(newValue);
+//        } catch (e){
+//            console.log(e);
+//        }
+    }
+    editor1.on('change', change);
+    var editor2 = CodeMirror(document.querySelector('.target'), {mode: "javascript", lineNumbers: true, readOnly: true});
+
+    editor1.setValue(localStorage.getItem('editorValue') || '');
+//    change(editor1);
+
+</script>
+
+</body>
+</html>
