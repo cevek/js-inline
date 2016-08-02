@@ -375,8 +375,9 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     const parentStatement = getParentStatement(parentPath);
 
                     // parentStatement.replaceWith(t.blockStatement([path.parentPath.node]));
-                    // parentStatement.insertBefore(path.parentPath.node);
-                    insertBefore(parentStatement, path.parentPath.node);
+                    parentStatement.insertBefore(path.parentPath.node);
+                    parentStatement.setScope();
+                    // insertBefore(parentStatement, path.parentPath.node);
 
                     if (useParentResultIdentifier || callIsStatement) {
                         parentParentPath.remove();
