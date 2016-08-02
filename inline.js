@@ -223,6 +223,28 @@ function checkLimitCall(name) {
     }
 }
 
+// fixed buggy implementation
+function insertBefore(path, nodes) {
+    nodes = Array.isArray(nodes) ? nodes : [nodes];
+    if (path.parentPath.isExpressionStatement() || path.parentPath.isLabeledStatement()) {
+        return path.parentPath.insertBefore(nodes);
+    } else if (path.isNodeType("Expression") || path.parentPath.isForStatement() && path.key === "init") {
+        if (path.node) nodes.push(path.node);
+        this.replaceExpressionWithStatements(nodes);
+    } else {
+        path._maybePopFromStatements(nodes);
+        if (Array.isArray(path.container)) {
+            return path._containerInsertBefore(nodes);
+        } else if (path.isStatementOrBlock()) {
+            if (path.node) nodes.push(path.node);
+            path.replaceWith(t.blockStatement(nodes)); // fix _replaceWith to replaceWith
+        } else {
+            throw new Error("We don't know what to do with this node type. We were previously a Statement but we can't fit in here?");
+        }
+    }
+    return [path];
+}
+
 const inlinerPlugin = (parentPath)=>function (obj) {
     var t = obj.types;
     window.t = t;
@@ -313,10 +335,8 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                                     inlinePath(source, refPath.parentPath);
 
-                                    //todo: update bindings
                                     // printCode('after', refPath.parentPath);
                                     // callbackPath.remove();
-                                    console.log(callbackPath.parentPath.getSource());
                                     // console.log(callbackPath);
 
                                 }
@@ -354,7 +374,9 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     const parentStatement = getParentStatement(parentPath);
 
-                    parentStatement.insertBefore(path.parentPath.node);
+                    // parentStatement.replaceWith(t.blockStatement([path.parentPath.node]));
+                    // parentStatement.insertBefore(path.parentPath.node);
+                    insertBefore(parentStatement, path.parentPath.node);
 
                     if (useParentResultIdentifier || callIsStatement) {
                         parentParentPath.remove();
@@ -483,8 +505,8 @@ function inlineCode(source) {
     const inline = {
         map: `
                 function map(fn) {
-                    for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
-                        newArr[i] = fn(this[i]);
+                     for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
+                         newArr[i] = fn(this[i]);
                     return fn(1);
                 }
         `
