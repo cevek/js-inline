@@ -47,8 +47,8 @@ const tests = {
                 }
             `
         },
-        source: 'var i, _i, arr, len, newArr; const foo = map(1)',
-        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var _mapResult=_newArr;}}const foo=_mapResult;'
+        source: 'var i, _i, arr, len, newArr; var foo = map(1)',
+        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var foo=_newArr;}}'
     },
     insideFunctionWithUsingVars: {
         inline: {
@@ -80,7 +80,7 @@ const tests = {
             `,
         },
         source: 'var len; var data = xmap()',
-        output: 'var len;{var arr;{const _len=arr.length;function foo(){return _len;}var _xmapResult=_len+1;}}var data=_xmapResult;'
+        output: 'var len;{var arr;{const _len=arr.length;function foo(){return _len;}var data=_len+1;}}'
     },
     fooEmptyArguments: {
         inline: {
@@ -187,6 +187,37 @@ const tests = {
         output: '{var sum;_manyReturns:{function x(){return x;}while(1){var _manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
     },
 
+    filterInMap: {
+        inline: {
+            map: `
+                function map(fn) {
+                     for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
+                         newArr[i] = fn(this[i]);
+                    return newArr;
+                }
+            `,
+            filter: `
+                function filter(fn) {
+                     for (var len = this.length, newArr = [], i = 0; i < len; i++) {
+                         var val = this[i];
+                         if (fn(val, i)) 
+                            newArr.push(val);
+                            
+                     }       
+                    return newArr;
+                }
+            `
+        },
+        source: `
+            var data = localUsers.map((lUser) => {
+              return allUsers.filter(user => {
+                 return lUser.id == user.id;  
+              });
+            })
+        `,
+        output: '{var _this=localUsers;{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{var _this5=allUsers;{for(var _len2=_this5.length,_newArr2=[],_i2=0;_i2<_len2;_i2++){var val=_this5[_i2];{var user=val;{var _result3=lUser.id==user.id;}}if(_result3)_newArr2.push(val);}var _result=_newArr2;}}}}newArr[i]=_result;}var data=newArr;}}'
+    },
+
 };
 
 
@@ -253,9 +284,17 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     const parentParentPath = parentPath.parentPath;
 
     const callIsStatement = t.isExpressionStatement(parentParentPath);
-    const useParentResultIdentifier = t.isAssignmentExpression(parentParentPath) && t.isIdentifier(parentParentPath.node.left) && parentParentPath.node.operator == '=';
+    let useParentResultIdentifier = t.isAssignmentExpression(parentParentPath) && t.isIdentifier(parentParentPath.node.left) && parentParentPath.node.operator == '=';
     let resultIdentifier = callIsStatement ? null : (useParentResultIdentifier ? parentParentPath.node.left : null);
-    let resultIsDeclared = false;
+    let resultIsDeclared = useParentResultIdentifier;
+    let remove = callIsStatement || useParentResultIdentifier;
+    if (t.isVariableDeclarator(parentParentPath) && parentParentPath.parentPath.node.kind == 'var') {
+        useParentResultIdentifier = true;
+        resultIdentifier = parentParentPath.node.id;
+        resultIsDeclared = false;
+        remove = true;
+    }
+
 
     let labelIdentifier;
     const variables = [];
@@ -270,6 +309,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     const replaceBody = [];
     let usedBreaks = false;
 
+    const inlineStack = [];
     function checkFunctionIsTop(path){
         return (t.isExpressionStatement(path.parentPath) && t.isProgram(path.parentPath.parentPath));
     }
@@ -293,16 +333,16 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     if (!checkFunctionIsTop(path)) {
                         return;
                     }
+                    path._targetFunction = true;
                     checkLimitCall('SourcePreparerFunctionExit');
 
-                    const fnName =  path.node.id ? path.node.id.name : path.scope.generateUid();
-                    labelIdentifier = parentScope.generateUidIdentifier(fnName);
+                    const fnName = path.node.id ? path.node.id.name : '';
+                    labelIdentifier = parentScope.generateUidIdentifier(fnName || void 0);
 
-
-                    if (!useParentResultIdentifier && !callIsStatement) {
-                        resultIdentifier = parentScope.generateUidIdentifier(fnName + 'Result');
+                    if (!useParentResultIdentifier) {
+                        resultIdentifier = parentScope.generateUidIdentifier(fnName ? (fnName + 'Result') : 'result');
                     }
-                    path._targetFunction = true;
+
                     const body = path.get('body');
                     const scope = body.scope;
 
@@ -317,7 +357,13 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                             scope.rename(key, newKey);
                         }
                     }
+                },
+                exit(path) {
+                    if (!checkFunctionIsTop(path)) {
+                        return;
+                    }
 
+                    const body = path.get('body');
 
                     const skipArguments = [];
                     parentPath.node.arguments.forEach((arg, i) => {
@@ -333,8 +379,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                                     // console.log('inline', source, refPath.parentPath);
                                     // printCode('before', refPath.parentPath);
 
-                                    inlinePath(source, refPath.parentPath);
-
+                                    inlineStack.push({source, callbackPath, path: refPath.parentPath});
                                     // printCode('after', refPath.parentPath);
                                     // callbackPath.remove();
                                     // console.log(callbackPath);
@@ -347,18 +392,11 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     for (let i = 0; i < path.node.params.length; i++) {
                         const param = path.node.params[i];
+                        const declarator = t.variableDeclarator(param, parentPath.node.arguments[i]);
                         if (!skipArguments[i]) {
-                            variables.push(t.variableDeclarator(param, parentPath.node.arguments[i]));
+                            variables.push(declarator);
                         }
                     }
-                },
-                exit(path) {
-                    if (!checkFunctionIsTop(path)) {
-                        return;
-                    }
-                    checkLimitCall('SourcePreparerFunctionEnter');
-
-                    const body = path.get('body');
 
                     if (variables.length) {
                         replaceBody.push(t.variableDeclaration('var', variables));
@@ -379,11 +417,25 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     parentStatement.setScope();
                     // insertBefore(parentStatement, path.parentPath.node);
 
-                    if (useParentResultIdentifier || callIsStatement) {
-                        parentParentPath.remove();
+                    if (remove) {
+                        if (t.isVariableDeclarator(parentParentPath) || t.isAssignmentExpression(parentParentPath)) {
+                            parentParentPath.remove();
+                        } else {
+                            parentPath.remove();
+                        }
                     } else {
+                        if (useParentResultIdentifier) {
+                        }
                         parentPath.replaceWith(resultIdentifier);
                     }
+
+                    for (var i = 0; i < inlineStack.length; i++) {
+                        var {source, path, callbackPath, variablePath} = inlineStack[i];
+                        inlinePath(source, path);
+                        // console.log(callbackPath);
+                    }
+
+                    checkLimitCall('SourcePreparerFunctionEnter');
                 }
             },
 
@@ -429,26 +481,23 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         usedBreaks = true;
                     }
 
-                    if (resultIdentifier) {
-                        const replace = [];
-                        if (resultIsDeclared || useParentResultIdentifier) {
+                    const replace = [];
+                    if (!callIsStatement) {
+                        if (resultIsDeclared) {
                             replace.push(t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument)));
                         } else {
                             replace.push(t.variableDeclaration('var', [t.variableDeclarator(resultIdentifier, path.node.argument)]));
                             resultIsDeclared = true;
                         }
-                        if (!isLastReturn) {
-                            replace.push(t.breakStatement(labelIdentifier));
-                        }
-                        path.replaceWithMultiple(replace);
                     } else {
-                        if (isLastReturn) {
-                            path.remove();
-                        } else {
-                            path.replaceWith(t.breakStatement(labelIdentifier));
+                        if (!t.isIdentifier(path.node.argument)) {
+                            replace.push(t.expressionStatement(path.node.argument));
                         }
                     }
-
+                    if (!isLastReturn) {
+                        replace.push(t.breakStatement(labelIdentifier));
+                    }
+                    path.replaceWithMultiple(replace);
                 }
             }
         }
@@ -499,18 +548,31 @@ function test(testName) {
 const keys = Object.keys(tests);
 const onlyKeys = keys.filter(key => key[0] == '$');
 const testKeys = onlyKeys.length ? onlyKeys : keys.filter(key => key[0] !== '_');
-// testKeys.forEach(test);
-// console.log(`${testKeys.length} tests done`);
+testKeys.forEach(test);
+console.log(`${testKeys.length} tests done`);
 
 function inlineCode(source) {
     const inline = {
         map: `
                 function map(fn) {
+                     if (1) return [];
                      for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
                          newArr[i] = fn(this[i]);
-                    return fn(1);
+                    return newArr;
                 }
-        `
+        `,
+        filter: `
+                function filter(fn) {
+                     for (var len = this.length, newArr = [], i = 0; i < len; i++) {
+                         var val = this[i];
+                         if (fn(val, i)) 
+                            newArr.push(val);
+                            
+                     }       
+                    return newArr;
+                }
+        `,
+        foo: `function foo(fn){return fn()}`
     };
     const output1 = Babel.transform(source, {compact: true, plugins: [plugin(inline)], presets: ['stage-0']});
     output1.ast.tokens = null;
