@@ -221,7 +221,6 @@ const tests = {
 };
 
 
-
 function printCode(title, nodePath, ast) {
     console.log(title, Babel.transformFromAst(ast || nodePath.hub.file.ast, '', {compact: false}).code);
 }
@@ -231,6 +230,8 @@ function formatAst(ast) {
     return JSON.stringify(ast, (k, v) => k == 'start' || k == 'end' || k == 'loc' ? void 0 : v, 3);
 }
 
+
+const postfix = '_';
 
 function parentsHasTargetFunction(path) {
     const parents = path.getAncestry();
@@ -310,11 +311,12 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     let usedBreaks = false;
 
     const inlineStack = [];
-    function checkFunctionIsTop(path){
+
+    function checkFunctionIsTop(path) {
         return (t.isExpressionStatement(path.parentPath) && t.isProgram(path.parentPath.parentPath));
     }
 
-    function getParentStatement(path){
+    function getParentStatement(path) {
         do {
             if (!path.parentPath || path.isStatement()) {
                 break;
@@ -334,7 +336,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         return;
                     }
                     path._targetFunction = true;
-                    checkLimitCall('SourcePreparerFunctionExit');
+                    checkLimitCall('SourcePreparerFunctionEnter');
 
                     const fnName = path.node.id ? path.node.id.name : '';
                     labelIdentifier = parentScope.generateUidIdentifier(fnName || void 0);
@@ -359,6 +361,8 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     }
                 },
                 exit(path) {
+                    checkLimitCall('SourcePreparerFunctionExit');
+
                     if (!checkFunctionIsTop(path)) {
                         return;
                     }
@@ -393,9 +397,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     for (let i = 0; i < path.node.params.length; i++) {
                         const param = path.node.params[i];
                         const declarator = t.variableDeclarator(param, parentPath.node.arguments[i]);
-                        if (!skipArguments[i]) {
-                            variables.push(declarator);
-                        }
+                        variables.push(declarator);
                     }
 
                     if (variables.length) {
@@ -415,7 +417,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     // parentStatement.replaceWith(t.blockStatement([path.parentPath.node]));
                     parentStatement.insertBefore(path.parentPath.node);
                     parentStatement.setScope();
-                    // insertBefore(parentStatement, path.parentPath.node);
+
 
                     if (remove) {
                         if (t.isVariableDeclarator(parentParentPath) || t.isAssignmentExpression(parentParentPath)) {
@@ -428,14 +430,6 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         }
                         parentPath.replaceWith(resultIdentifier);
                     }
-
-                    for (var i = 0; i < inlineStack.length; i++) {
-                        var {source, path, callbackPath, variablePath} = inlineStack[i];
-                        inlinePath(source, path);
-                        // console.log(callbackPath);
-                    }
-
-                    checkLimitCall('SourcePreparerFunctionEnter');
                 }
             },
 
@@ -504,8 +498,12 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     }
 };
 
-function inlinePath(source, path) {
-    const output = Babel.transform(`(${source})`, {plugins: [inlinerPlugin(path)], compact: false, presets: ['stage-0']});
+function inlinePath(ast, path) {
+    const output = Babel.transformFromAst(ast, '', {
+        plugins: [inlinerPlugin(path)],
+        compact: false,
+        presets: ['stage-0']
+    });
     return output.ast;
 }
 
@@ -518,15 +516,52 @@ const plugin = (inlineFns)=>function (obj) {
         visitor: {
             CallExpression: {
                 exit(nodePath) {
-                    console.log("exit", nodePath.node.callee.name);
+                    // console.log("exit", nodePath.node.callee.name);
                 },
                 enter(path, plugPass) {
+                    // console.log('enter', path);
+
                     checkLimitCall('InlineCallExpEnter');
                     // console.log("enter", path.node.callee.name);
-                    const fnName = t.isMemberExpression(path.node.callee) ? path.node.callee.property.name : path.node.callee.name;
-                    const inlineSource = inlineFns[fnName];
-                    if (inlineSource) {
-                        inlinePath(inlineSource, path);
+                    const callee = path.get('callee');
+                    const fnPath = t.isMemberExpression(callee) ? callee.get('property') : callee;
+                    const fnName = fnPath.node.name;
+                    if (fnName.substr(-postfix.length) == postfix) {
+                        const scope = fnPath.scope;
+                        const allBindings = scope.getAllBindings();
+                        let binding = allBindings[fnName];
+
+                        if (binding) {
+                            const declaration = binding.path;
+                            let fnAst;
+                            let isVariableDeclarator = false;
+                            if (t.isFunctionDeclaration(declaration)) {
+                                fnAst = declaration.node;
+                                isVariableDeclarator = true;
+                            } else if (t.isVariableDeclarator(declaration)) {
+                                fnAst = declaration.get('init').node;
+                            }
+                            if (fnAst) {
+                                inlinePath(t.program([t.expressionStatement(fnAst)]), path);
+                                binding.scope.crawl();
+                                binding = binding.scope.bindings[fnName];
+                                if (binding) {
+                                    const refs = binding.referencePaths;
+                                    if (refs.length == 0) {
+                                        if (isVariableDeclarator) {
+                                            binding.path.parentPath.remove();
+                                        } else {
+                                            binding.path.remove();
+                                        }
+                                    } else {
+                                        console.log('Not all usings inlined', binding.path);
+                                    }
+                                }
+
+                            }
+
+
+                        }
                     }
                 },
 
@@ -548,8 +583,10 @@ function test(testName) {
 const keys = Object.keys(tests);
 const onlyKeys = keys.filter(key => key[0] == '$');
 const testKeys = onlyKeys.length ? onlyKeys : keys.filter(key => key[0] !== '_');
-testKeys.forEach(test);
+// testKeys.forEach(test);
 console.log(`${testKeys.length} tests done`);
+
+// todo: check inline function scope, it cannot use variables that cannot be using in inline context
 
 function inlineCode(source) {
     const inline = {
