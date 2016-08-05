@@ -1,8 +1,7 @@
 const tests = {
     simpleInline: {
-        inline: {
-            'map': `
-                function map(arr) {
+        source: `
+                var map_ = function map_(arr) {
                     "use strict";
                     const len = arr.length;
                     const newArr = new Array(len);
@@ -11,15 +10,15 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `
-        },
-        source: 'map()',
+        
+        map_();
+        `,
         output: '{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=arr[i];}}}'
     },
     withUsingVars: {
-        inline: {
-            'map': `
-                function map(arr) {
+        source: `
+        
+        function map_(arr) {
                     "use strict";
                     const len = arr.length;
                     const newArr = new Array(len);
@@ -28,15 +27,13 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `
-        },
-        source: 'var i, _i, arr, len, newArr; map(1)',
+                
+        var i, _i, arr, len, newArr; map_(1)`,
         output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}}}'
     },
     withUsingVarsAndAssignment: {
-        inline: {
-            'map': `
-                function map(arr) {
+        source: `
+            function map_(arr) {
                     "use strict";
                     const len = arr.length;
                     const newArr = new Array(len);
@@ -45,15 +42,13 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `
-        },
-        source: 'var i, _i, arr, len, newArr; var foo = map(1)',
+                
+                var i, _i, arr, len, newArr; var foo = map_(1)`,
         output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var foo=_newArr;}}'
     },
     insideFunctionWithUsingVars: {
-        inline: {
-            'map': `
-                function map(arr) {
+        source: `
+        function map_(arr) {
                     "use strict";
                     const len = arr.length;
                     const newArr = new Array(len);
@@ -62,57 +57,54 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `
-        },
-        source: 'var i, len, newArr; function abc(){let arr, _i; return map(1)}',
+        
+        var i, len, newArr; function abc(){let arr, _i; return map_(1)}`,
         output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var _mapResult=_newArr;}}return _mapResult;}'
     },
     xmap: {
-        inline: {
-            'xmap': `
-               function xmap(arr) {
+        source: `
+        
+        function xmap_(arr) {
                     const len = arr.length;
                     function foo(){
                         return len;             
                     }
                     return len + 1;
                }
-            `,
-        },
-        source: 'var len; var data = xmap()',
+        var len; var data = xmap_()`,
         output: 'var len;{var arr;{const _len=arr.length;function foo(){return _len;}var data=_len+1;}}'
     },
     fooEmptyArguments: {
-        inline: {
-            'foo': `
-                function foo() {
+        source: `
+        function foo_() {
                   var sum = 0;
                   for (var i=0; i<arguments.length; i++) sum+=arguments[i];
                   return sum;
                 }
-            `
-        },
-        source: 'foo()',
+        
+        foo_()`,
         output: '{var _arguments=[];{var sum=0;for(var i=0;i<_arguments.length;i++)sum+=_arguments[i];}}'
     },
 
     fooArguments: {
-        inline: {
-            'foo': `
-                function foo() {
+        source: `
+        function foo_() {
                   var sum = 0;
                   for (var i=0; i<arguments.length; i++) sum+=arguments[i];
                   return sum;
                 }
-            `
-        },
-        source: 'foo(1,2,3)',
+        
+        foo_(1,2,3)`,
         output: '{var _arguments=[1,2,3];{var sum=0;for(var i=0;i<_arguments.length;i++)sum+=_arguments[i];}}'
     },
     fooMap: {
-        inline: {
-            'map': `
-                function map(arr) {
+        source: `
+        function bar_() {
+                  let sum, i; 
+                  return map_();
+               }
+               
+        function map_(arr) {
                     "use strict";
                     const len = arr.length;
                     const newArr = new Array(len);
@@ -121,22 +113,16 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `,
-            'bar': `
-               function bar() {
-                  let sum, i; 
-                  return map();
-               }
-            `
-        },
-        source: 'var i; i = bar()',
-        output: 'var i;{{let sum,_i;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var _i2=0;_i2<len;_i2++){newArr[_i2]=arr[_i2];}i=newArr;}}}}'
+                
+                
+                
+        var i; i = bar_()`,
+        output: 'var i;{{let sum,_i2;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var _i=0;_i<len;_i++){newArr[_i]=arr[_i];}var _mapResult=newArr;}}i=_mapResult;}}'
     },
 
     this: {
-        inline: {
-            'mapThis': `
-                function mapThis() {
+        source: `
+        function mapThis_() {
                     const len = this.length;
                     function x(){return this}
                     const newArr = new Array(len);
@@ -145,16 +131,14 @@ const tests = {
                     }       
                     return newArr;
                 }
-            `
-        },
-        source: 'var _this; array.mapThis()',
+        
+        var _this; array.mapThis_()`,
         output: 'var _this;{var _this2=array;{const len=_this2.length;function x(){return this;}const newArr=new Array(len);for(var i=0;i<len;i++){newArr[i]=fn(_this2[i]);}}}'
     },
 
     arguments: {
-        inline: {
-            'mapArguments': `
-               function mapArguments() {
+        source: `
+        function mapArguments_() {
                     function x(){return arguments}
                     let sum = 0;
                     for (var i = 0; i < arguments.length; i++) {
@@ -162,16 +146,25 @@ const tests = {
                     }       
                     return sum;
                }
-            `,
-        },
-        source: 'var _arguments; mapArguments(1,2,3)',
+        
+        var _arguments; mapArguments_(1,2,3)`,
         output: 'var _arguments;{var _arguments2=[1,2,3];{function x(){return arguments;}let sum=0;for(var i=0;i<_arguments2.length;i++){sum+=_arguments2[i];}}}'
     },
 
+    // todo
+    withoutReturn: {
+        source: `
+        function map_() {
+                    
+               }
+        
+        var x = map_();`,
+        output: '{{}}'
+    },
+
     manyReturns: {
-        inline: {
-            'manyReturns': `
-               function manyReturns(sum) {
+        source: `
+        function manyReturns_(sum) {
                     function x(){return x}
                     while(1) {
                         return sum;    
@@ -181,41 +174,37 @@ const tests = {
                     }       
                     return sum;
                }
-            `,
-        },
-        source: 'const a = manyReturns()',
+        
+        const a = manyReturns_()`,
         output: '{var sum;_manyReturns:{function x(){return x;}while(1){var _manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
     },
 
     filterInMap: {
-        inline: {
-            map: `
-                function map(fn) {
+        source: `
+        
+        function map_(fn_) {
                      for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
-                         newArr[i] = fn(this[i]);
+                         newArr[i] = fn_(this[i]);
                     return newArr;
                 }
-            `,
-            filter: `
-                function filter(fn) {
+                
+                function filter_(fn_) {
                      for (var len = this.length, newArr = [], i = 0; i < len; i++) {
                          var val = this[i];
-                         if (fn(val, i)) 
+                         if (fn_(val, i)) 
                             newArr.push(val);
                             
                      }       
                     return newArr;
                 }
-            `
-        },
-        source: `
-            var data = localUsers.map((lUser) => {
-              return allUsers.filter(user => {
+                
+            var data = localUsers.map_((lUser) => {
+              return allUsers.filter_(user => {
                  return lUser.id == user.id;  
               });
             })
         `,
-        output: '{var _this=localUsers;{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{var _this5=allUsers;{for(var _len2=_this5.length,_newArr2=[],_i2=0;_i2<_len2;_i2++){var val=_this5[_i2];{var user=val;{var _result3=lUser.id==user.id;}}if(_result3)_newArr2.push(val);}var _result=_newArr2;}}}}newArr[i]=_result;}var data=newArr;}}'
+        output: '{{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{{for(var _len=_this2.length,_newArr=[],_i=0;_i<_len;_i++){var val=_this2[_i];{var user=val;{var _fnResult3=lUser.id==user.id;}}if(_fnResult3)_newArr.push(val);}var _filterResult=_newArr;}}var _fnResult2=_filterResult;}}newArr[i]=_fnResult2;}var data=newArr;}}'
     },
 
 };
@@ -507,7 +496,7 @@ function inlinePath(ast, path) {
     return output.ast;
 }
 
-const plugin = (inlineFns)=>function (obj) {
+const plugin = (config)=>function (obj) {
     var t = obj.types;
     window.t = t;
     window.pluginObj = obj;
@@ -537,12 +526,18 @@ const plugin = (inlineFns)=>function (obj) {
                             let isVariableDeclarator = false;
                             if (t.isFunctionDeclaration(declaration)) {
                                 fnAst = declaration.node;
-                                isVariableDeclarator = true;
                             } else if (t.isVariableDeclarator(declaration)) {
                                 fnAst = declaration.get('init').node;
+                                isVariableDeclarator = true;
                             }
                             if (fnAst) {
-                                inlinePath(t.program([t.expressionStatement(fnAst)]), path);
+                                let funExp = fnAst;
+                                if (t.isFunctionDeclaration(fnAst)) {
+                                    funExp = t.functionExpression(null, fnAst.params, fnAst.body, fnAst.generator, fnAst.async);
+                                }
+                                funExp.id = t.identifier(fnName.substr(0, fnName.length - postfix.length));
+
+                                inlinePath(t.program([t.expressionStatement(funExp)]), path);
                                 binding.scope.crawl();
                                 binding = binding.scope.bindings[fnName];
                                 if (binding) {
@@ -583,35 +578,13 @@ function test(testName) {
 const keys = Object.keys(tests);
 const onlyKeys = keys.filter(key => key[0] == '$');
 const testKeys = onlyKeys.length ? onlyKeys : keys.filter(key => key[0] !== '_');
-// testKeys.forEach(test);
+testKeys.forEach(test);
 console.log(`${testKeys.length} tests done`);
 
 // todo: check inline function scope, it cannot use variables that cannot be using in inline context
 
 function inlineCode(source) {
-    const inline = {
-        map: `
-                function map(fn) {
-                     if (1) return [];
-                     for (var len = this.length, newArr = new Array(len), i = 0; i < len; i++) 
-                         newArr[i] = fn(this[i]);
-                    return newArr;
-                }
-        `,
-        filter: `
-                function filter(fn) {
-                     for (var len = this.length, newArr = [], i = 0; i < len; i++) {
-                         var val = this[i];
-                         if (fn(val, i)) 
-                            newArr.push(val);
-                            
-                     }       
-                    return newArr;
-                }
-        `,
-        foo: `function foo(fn){return fn()}`
-    };
-    const output1 = Babel.transform(source, {compact: true, plugins: [plugin(inline)], presets: ['stage-0']});
+    const output1 = Babel.transform(source, {compact: true, plugins: [plugin()], presets: ['stage-0']});
     output1.ast.tokens = null;
     const output = Babel.transformFromAst(output1.ast, '', {presets: ['stage-0']});
     // output.ast.tokens = null;
