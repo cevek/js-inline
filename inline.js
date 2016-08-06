@@ -1,3 +1,5 @@
+"use strict";
+
 const tests = {
     simpleInline: {
         source: `
@@ -29,7 +31,7 @@ const tests = {
                 }
                 
         var i, _i, arr, len, newArr; map_(1)`,
-        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}}}'
+        output: 'var i,_i,arr,len,newArr;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}}}'
     },
     withUsingVarsAndAssignment: {
         source: `
@@ -44,7 +46,7 @@ const tests = {
                 }
                 
                 var i, _i, arr, len, newArr; var foo = map_(1)`,
-        output: 'var i,_i,arr,len,newArr;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var foo=_newArr;}}'
+        output: 'var i,_i,arr,len,newArr;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}var foo=newArr1;}}'
     },
     insideFunctionWithUsingVars: {
         source: `
@@ -59,7 +61,7 @@ const tests = {
                 }
         
         var i, len, newArr; function abc(){let arr, _i; return map_(1)}`,
-        output: 'var i,len,newArr;function abc(){let arr,_i;{var _arr=1;{"use strict";const _len=_arr.length;const _newArr=new Array(_len);for(var _i2=0;_i2<_len;_i2++){_newArr[_i2]=_arr[_i2];}var _mapResult=_newArr;}}return _mapResult;}'
+        output: 'var i,len,newArr;function abc(){let arr,_i;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}var _mapResult=newArr1;}}return _mapResult;}'
     },
     xmap: {
         source: `
@@ -72,7 +74,7 @@ const tests = {
                     return len + 1;
                }
         var len; var data = xmap_()`,
-        output: 'var len;{var arr;{const _len=arr.length;function foo(){return _len;}var data=_len+1;}}'
+        output: 'var len;{var arr;{const len1=arr.length;function foo(){return len1;}var data=len1+1;}}'
     },
     fooEmptyArguments: {
         source: `
@@ -117,7 +119,7 @@ const tests = {
                 
                 
         var i; i = bar_()`,
-        output: 'var i;{{let sum,_i2;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var _i=0;_i<len;_i++){newArr[_i]=arr[_i];}var _mapResult=newArr;}}i=_mapResult;}}'
+        output: 'var i;{{let sum,i2;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var i1=0;i1<len;i1++){newArr[i1]=arr[i1];}var _mapResult=newArr;}}i=_mapResult;}}'
     },
 
     this: {
@@ -152,13 +154,21 @@ const tests = {
     },
 
     // todo
-    withoutReturn: {
+    _withoutReturn: {
         source: `
-        function map_() {
-                    
-               }
-        
-        var x = map_();`,
+            function bar_() {
+              var i = 10; 
+              return map_();
+            }
+            
+            function map_() {
+              var i = 10;
+            }
+            
+            var i; 
+            i = bar_()        
+            
+            `,
         output: '{{}}'
     },
 
@@ -204,14 +214,46 @@ const tests = {
               });
             })
         `,
-        output: '{{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{{for(var _len=_this2.length,_newArr=[],_i=0;_i<_len;_i++){var val=_this2[_i];{var user=val;{var _fnResult3=lUser.id==user.id;}}if(_fnResult3)_newArr.push(val);}var _filterResult=_newArr;}}var _fnResult2=_filterResult;}}newArr[i]=_fnResult2;}var data=newArr;}}'
+        output: '{{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{{for(var len1=_this2.length,newArr1=[],i1=0;i1<len1;i1++){var val=_this2[i1];{var user=val;{var _result1=lUser.id==user.id;}}if(_result1)newArr1.push(val);}var _filterResult=newArr1;}}var _result2=_filterResult;}}newArr[i]=_result2;}var data=newArr;}}'
+    },
+
+    sixDeepLevel: {
+        source: `
+        
+        function map_(mapFn_) {
+          return mapFn_(1);
+        }
+        
+        function filter_(filterFn_) {
+          return filterFn_(2);
+        }
+        
+        function every_(everyFn_) {
+          return everyFn_(3);
+        }
+        
+        var data = map_((v1)=>{
+          return v1 + filter_((v2)=>{
+            return v2 + every_((v3) => {
+              return v3 + 1
+            })
+          })
+        });
+
+        `,
+        output: '{{{var v1=1;{{{{var v2=2;{{{{var v3=3;{var _everyResult=v3+1;}}}}var _filterResult=v2+_everyResult;}}}}var data=v1+_filterResult;}}}}'
     },
 
 };
 
 
 function printCode(title, nodePath, ast) {
-    console.log(title, Babel.transformFromAst(ast || nodePath.hub.file.ast, '', {compact: false}).code);
+    const root = nodePath.getAncestry().pop().node;
+    console.log(title, Babel.transformFromAst(ast || root, '', {compact: false}).code);
+}
+
+function printFromAst(title, ast) {
+    console.log(title, Babel.transformFromAst(t.program([t.isStatement(ast) ? ast : t.expressionStatement(ast)]), '', {compact: false}).code);
 }
 
 
@@ -239,7 +281,7 @@ function checkLimitCall(name) {
     if (!_limit[name]) {
         _limit[name] = 0;
     }
-    if (_limit[name]++ > 100) {
+    if (_limit[name]++ > 10000) {
         throw new Error(`over ${name} call`);
     }
 }
@@ -316,6 +358,21 @@ const inlinerPlugin = (parentPath)=>function (obj) {
         return path;
     }
 
+    const regexp = new RegExp(`(\d+)?(${postfix})?$`);
+    function findName(key, scope1, scope2) {
+        let newKey = '';
+        const hasPostFix = key.substr(-postfix.length) == postfix;
+        const rawKey = key.replace(regexp, '');
+        let num = 0;
+        do {
+            newKey = rawKey + ++num + (hasPostFix ? '_' : '');
+        } while (scope1.hasBinding(newKey) || scope1.hasGlobal(newKey) || scope1.hasReference(newKey) || scope2.hasBinding(newKey) || scope2.hasGlobal(newKey) || scope2.hasReference(newKey));
+        var program = parentScope.getProgramParent();
+        program.references[newKey] = true;
+        program.uids[newKey] = true;
+        return newKey;
+    }
+
 
     return {
         visitor: {
@@ -344,7 +401,7 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         const key = keys[i];
                         const binding = allBindings[key];
                         if (parentScope.hasBinding(key)) {
-                            const newKey = parentScope.generateUid(key);
+                            let newKey = findName(key, parentScope, path.scope);
                             scope.rename(key, newKey);
                         }
                     }
@@ -488,12 +545,28 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 };
 
 function inlinePath(ast, path) {
-    const output = Babel.transformFromAst(ast, '', {
+    const code = Babel.transformFromAst(ast, '', {
+        compact: false,
+        presets: ['stage-0']
+    }).code;
+    const output = Babel.transform(code, {
         plugins: [inlinerPlugin(path)],
         compact: false,
         presets: ['stage-0']
     });
     return output.ast;
+}
+
+function findNameBinding(path, name) {
+    let scope = path.scope;
+    while (scope) {
+        var binding = scope.bindings[name];
+        if (binding) {
+            return binding;
+        }
+        scope = scope.parent;
+    }
+    return null;
 }
 
 const plugin = (config)=>function (obj) {
@@ -515,12 +588,13 @@ const plugin = (config)=>function (obj) {
                     const callee = path.get('callee');
                     const fnPath = t.isMemberExpression(callee) ? callee.get('property') : callee;
                     const fnName = fnPath.node.name;
+                    // console.log(path.node, fnName);
                     if (fnName.substr(-postfix.length) == postfix) {
-                        const scope = fnPath.scope;
-                        const allBindings = scope.getAllBindings();
-                        let binding = allBindings[fnName];
+                        let binding = findNameBinding(path, fnName);
 
-                        if (binding) {
+                        if (binding && (binding.kind == 'hoisted' || binding.kind == 'var')) {
+                            // console.log(fnName);
+
                             const declaration = binding.path;
                             let fnAst;
                             let isVariableDeclarator = false;
@@ -537,9 +611,20 @@ const plugin = (config)=>function (obj) {
                                 }
                                 funExp.id = t.identifier(fnName.substr(0, fnName.length - postfix.length));
 
+                                const bindingScope = binding.scope;
+
+                                // const parentPath = path.parentPath;
+                                // binding = path.scope.getAllBindings()[fnName];
+                                // if (fnName == 'everyFn_') debugger;
+                                // printCode('before ' + fnName, path);
                                 inlinePath(t.program([t.expressionStatement(funExp)]), path);
-                                binding.scope.crawl();
-                                binding = binding.scope.bindings[fnName];
+                                // printCode('after ' + fnName, path);
+
+                                // const oldBinding = binding;
+                                bindingScope.crawl();
+                                binding = bindingScope.bindings[fnName];
+
+                                // console.log('af', fnName, binding, bindingScope);
                                 if (binding) {
                                     const refs = binding.referencePaths;
                                     if (refs.length == 0) {
@@ -552,7 +637,7 @@ const plugin = (config)=>function (obj) {
                                         console.log('Not all usings inlined', binding.path);
                                     }
                                 }
-
+                                // printCode(fnName, path);
                             }
 
 
