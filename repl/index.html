@@ -17,7 +17,8 @@
         }
 
         .col {
-            flex: 1
+            flex: 1;
+            width: 50%;
         }
 
         .CodeMirror {
@@ -39,21 +40,23 @@
 
 <script>
     var editor1 = CodeMirror(document.querySelector('.source'), {mode: "javascript", lineNumbers: true});
-    function change(cm){
+    function change(cm) {
         const value = cm.getValue();
         localStorage.setItem('editorValue', value);
-//        try {
-        const newValue = inlineCode(value);
-        editor2.setValue(newValue);
-//        } catch (e){
-//            console.log(e);
-//        }
+        try {
+            const newValue = inlineCode(value);
+            editor2.setValue(newValue);
+        } catch (e) {
+            console.error(e);
+        }
     }
     editor1.on('change', change);
-    var editor2 = CodeMirror(document.querySelector('.target'), {mode: "javascript", lineNumbers: true, readOnly: true});
-
+    var editor2 = CodeMirror(document.querySelector('.target'), {
+        mode: "javascript",
+        lineNumbers: true,
+        readOnly: true
+    });
     editor1.setValue(localStorage.getItem('editorValue') || '');
-//    change(editor1);
 
 </script>
 
