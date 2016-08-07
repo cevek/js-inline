@@ -31,7 +31,7 @@ const tests = {
                 }
                 
         var i, _i, arr, len, newArr; map_(1)`,
-        output: 'var i,_i,arr,len,newArr;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}}}'
+        output: 'var i,_i,arr,len,newArr;{var arr2=1;{"use strict";const len2=arr2.length;const newArr2=new Array(len2);for(var i2=0;i2<len2;i2++){newArr2[i2]=arr2[i2];}}}'
     },
     withUsingVarsAndAssignment: {
         source: `
@@ -46,7 +46,7 @@ const tests = {
                 }
                 
                 var i, _i, arr, len, newArr; var foo = map_(1)`,
-        output: 'var i,_i,arr,len,newArr;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}var foo=newArr1;}}'
+        output: 'var i,_i,arr,len,newArr;{var arr2=1;{"use strict";const len2=arr2.length;const newArr2=new Array(len2);for(var i2=0;i2<len2;i2++){newArr2[i2]=arr2[i2];}var foo=newArr2;}}'
     },
     insideFunctionWithUsingVars: {
         source: `
@@ -61,7 +61,7 @@ const tests = {
                 }
         
         var i, len, newArr; function abc(){let arr, _i; return map_(1)}`,
-        output: 'var i,len,newArr;function abc(){let arr,_i;{var arr1=1;{"use strict";const len1=arr1.length;const newArr1=new Array(len1);for(var i1=0;i1<len1;i1++){newArr1[i1]=arr1[i1];}var _mapResult=newArr1;}}return _mapResult;}'
+        output: 'var i,len,newArr;function abc(){let arr,_i;{var arr2=1;{"use strict";const len2=arr2.length;const newArr2=new Array(len2);for(var i2=0;i2<len2;i2++){newArr2[i2]=arr2[i2];}var mapRet=newArr2;}}return mapRet;}'
     },
     xmap: {
         source: `
@@ -74,7 +74,7 @@ const tests = {
                     return len + 1;
                }
         var len; var data = xmap_()`,
-        output: 'var len;{var arr;{const len1=arr.length;function foo(){return len1;}var data=len1+1;}}'
+        output: 'var len;{var arr;{const len2=arr.length;function foo(){return len2;}var data=len2+1;}}'
     },
     fooEmptyArguments: {
         source: `
@@ -119,7 +119,7 @@ const tests = {
                 
                 
         var i; i = bar_()`,
-        output: 'var i;{{let sum,i2;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var i1=0;i1<len;i1++){newArr[i1]=arr[i1];}var _mapResult=newArr;}}i=_mapResult;}}'
+        output: 'var i;{{let sum,i3;{var arr;{"use strict";const len=arr.length;const newArr=new Array(len);for(var i2=0;i2<len;i2++){newArr[i2]=arr[i2];}var mapRet=newArr;}}i=mapRet;}}'
     },
 
     this: {
@@ -153,8 +153,7 @@ const tests = {
         output: 'var _arguments;{var _arguments2=[1,2,3];{function x(){return arguments;}let sum=0;for(var i=0;i<_arguments2.length;i++){sum+=_arguments2[i];}}}'
     },
 
-    // todo
-    _withoutReturn: {
+    withoutReturn: {
         source: `
             function bar_() {
               var i = 10; 
@@ -169,7 +168,7 @@ const tests = {
             i = bar_()        
             
             `,
-        output: '{{}}'
+        output: 'var i;{{var i3=10;{{var i2=10;}var mapRet=undefined;}i=mapRet;}}'
     },
 
     manyReturns: {
@@ -186,7 +185,7 @@ const tests = {
                }
         
         const a = manyReturns_()`,
-        output: '{var sum;_manyReturns:{function x(){return x;}while(1){var _manyReturnsResult=sum;break _manyReturns;}if(1){_manyReturnsResult=sum;break _manyReturns;}_manyReturnsResult=sum;}}const a=_manyReturnsResult;'
+        output: '{var sum;manyReturnsLab:{function x(){return x;}while(1){var manyReturnsRet=sum;break manyReturnsLab;}if(1){manyReturnsRet=sum;break manyReturnsLab;}manyReturnsRet=sum;}}const a=manyReturnsRet;'
     },
 
     filterInMap: {
@@ -214,7 +213,7 @@ const tests = {
               });
             })
         `,
-        output: '{{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{{for(var len1=_this2.length,newArr1=[],i1=0;i1<len1;i1++){var val=_this2[i1];{var user=val;{var _result1=lUser.id==user.id;}}if(_result1)newArr1.push(val);}var _filterResult=newArr1;}}var _result2=_filterResult;}}newArr[i]=_result2;}var data=newArr;}}'
+        output: '{var _this=localUsers;{for(var len=_this.length,newArr=new Array(len),i=0;i<len;i++){{var lUser=_this[i];{{var _this2=allUsers;{for(var len2=_this2.length,newArr2=[],i2=0;i2<len2;i2++){var val=_this2[i2];{var user=val;{var fn2Ret2=lUser.id==user.id;}}if(fn2Ret2)newArr2.push(val);}var filterRet=newArr2;}}var fnRet=filterRet;}}newArr[i]=fnRet;}var data=newArr;}}'
     },
 
     sixDeepLevel: {
@@ -241,7 +240,7 @@ const tests = {
         });
 
         `,
-        output: '{{{var v1=1;{{{{var v2=2;{{{{var v3=3;{var _everyResult=v3+1;}}}}var _filterResult=v2+_everyResult;}}}}var data=v1+_filterResult;}}}}'
+        output: '{{{var v1=1;{{{{var v2=2;{{{{var v3=3;{var everyRet=v3+1;}}}}var filterRet=v2+everyRet;}}}}var data=v1+filterRet;}}}}'
     },
 
     reduce: {
@@ -257,6 +256,21 @@ const tests = {
         var x = [1,1,1].reduce_((aggr, val) => {return aggr + val}, 0);
         `,
         output: '{var _this=[1,1,1],init=0;{var res=init;for(var i=0;i<_this.length;i++){{var aggr=res,val=_this[i];{res=aggr+val;}}}var x=res;}}'
+    },
+
+    mapInMap: {
+        source: `
+            var map_ = function (fn_, val) {
+              return fn_(val);
+            }
+            
+            map_(v => {
+              return map_(x => {
+                return x + 1
+              }, 2) 
+            }, 1)
+`,
+        output: '{var val=1;{{var v=val;{{var val2=2;{{var x=val2;{var mapRet=x+1;}}}}}}}}'
     }
 
 };
@@ -380,9 +394,9 @@ const inlinerPlugin = (parentPath, fnName)=>function (obj) {
         let newKey = '';
         const hasPostFix = key.substr(-postfix.length) == postfix;
         const rawKey = key.replace(regexp, '');
-        let num = 0;
+        let num = 1;
         do {
-            newKey = rawKey + (num == 0 ? '' : num) + (hasPostFix ? '_' : '');
+            newKey = rawKey + (num == 1 ? '' : num) + (hasPostFix ? '_' : '');
             num++;
         } while (scope1.hasBinding(newKey) || scope1.hasGlobal(newKey) || scope1.hasReference(newKey) || scope2.hasBinding(newKey) || scope2.hasGlobal(newKey) || scope2.hasReference(newKey));
         var program = parentScope.getProgramParent();
@@ -659,7 +673,7 @@ const plugin = (config)=>function (obj) {
                                     if (refs.length == 0) {
                                         binding.path.remove();
                                     } else {
-                                        console.log('Not all usings inlined', binding.path);
+                                        // console.log('Not all usings inlined', binding.path);
                                     }
                                 }
                                 // printCode(fnName, path);
