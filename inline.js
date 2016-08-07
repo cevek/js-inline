@@ -244,6 +244,21 @@ const tests = {
         output: '{{{var v1=1;{{{{var v2=2;{{{{var v3=3;{var _everyResult=v3+1;}}}}var _filterResult=v2+_everyResult;}}}}var data=v1+_filterResult;}}}}'
     },
 
+    reduce: {
+        source: `
+        function reduce_(fn_, init){
+          var res = init;
+          for (var i=0; i < this.length; i++){
+             res = fn_(res, this[i], i);
+          }
+          return res;
+        }
+        
+        var x = [1,1,1].reduce_((aggr, val) => {return aggr + val}, 0);
+        `,
+        output: '{var _this=[1,1,1],init=0;{var res=init;for(var i=0;i<_this.length;i++){{var aggr=res,val=_this[i];{res=aggr+val;}}}var x=res;}}'
+    }
+
 };
 
 
@@ -308,21 +323,25 @@ function insertBefore(path, nodes) {
     return [path];
 }
 
-const inlinerPlugin = (parentPath)=>function (obj) {
+const inlinerPlugin = (parentPath, fnName)=>function (obj) {
     var t = obj.types;
     window.t = t;
     window.pluginObj = obj;
+    const regexp = new RegExp(`(\d+)?(${postfix})?$`);
+
+    const rawFnName = fnName.replace(regexp, '');
     const parentScope = parentPath.scope;
     const parentParentPath = parentPath.parentPath;
 
     const callIsStatement = t.isExpressionStatement(parentParentPath);
     let useParentResultIdentifier = t.isAssignmentExpression(parentParentPath) && t.isIdentifier(parentParentPath.node.left) && parentParentPath.node.operator == '=';
-    let resultIdentifier = callIsStatement ? null : (useParentResultIdentifier ? parentParentPath.node.left : null);
+    let resultIdentifier = callIsStatement ? null : (useParentResultIdentifier ? t.identifier(parentParentPath.node.left.name) : null);
     let resultIsDeclared = useParentResultIdentifier;
     let remove = callIsStatement || useParentResultIdentifier;
+    let returnIsUsed = false;
     if (t.isVariableDeclarator(parentParentPath) && parentParentPath.parentPath.node.kind == 'var') {
         useParentResultIdentifier = true;
-        resultIdentifier = parentParentPath.node.id;
+        resultIdentifier = t.identifier(parentParentPath.node.id.name);
         resultIsDeclared = false;
         remove = true;
     }
@@ -330,9 +349,8 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
     let labelIdentifier;
     const variables = [];
-    const thisIdentifier = parentScope.generateUidIdentifier('this');
+    let thisIdentifier;
     const thisValue = t.isMemberExpression(parentPath.node.callee) ? parentPath.node.callee.object : t.nullLiteral();
-    let thisAssigned = false;
 
     let argumentsAssigned = false;
     const argumentsIdentifier = parentScope.generateUidIdentifier('arguments');
@@ -358,14 +376,14 @@ const inlinerPlugin = (parentPath)=>function (obj) {
         return path;
     }
 
-    const regexp = new RegExp(`(\d+)?(${postfix})?$`);
     function findName(key, scope1, scope2) {
         let newKey = '';
         const hasPostFix = key.substr(-postfix.length) == postfix;
         const rawKey = key.replace(regexp, '');
         let num = 0;
         do {
-            newKey = rawKey + ++num + (hasPostFix ? '_' : '');
+            newKey = rawKey + (num == 0 ? '' : num) + (hasPostFix ? '_' : '');
+            num++;
         } while (scope1.hasBinding(newKey) || scope1.hasGlobal(newKey) || scope1.hasReference(newKey) || scope2.hasBinding(newKey) || scope2.hasGlobal(newKey) || scope2.hasReference(newKey));
         var program = parentScope.getProgramParent();
         program.references[newKey] = true;
@@ -373,6 +391,22 @@ const inlinerPlugin = (parentPath)=>function (obj) {
         return newKey;
     }
 
+
+    var replaceReturn = function (node) {
+        returnIsUsed = true;
+        if (!callIsStatement) {
+            if (resultIsDeclared) {
+                return t.expressionStatement(t.assignmentExpression('=', resultIdentifier, node.argument));
+            } else {
+                resultIsDeclared = true;
+                return t.variableDeclaration('var', [t.variableDeclarator(resultIdentifier, node.argument)]);
+            }
+        } else {
+            if (!t.isIdentifier(node.argument)) {
+                return t.expressionStatement(node.argument);
+            }
+        }
+    };
 
     return {
         visitor: {
@@ -384,14 +418,13 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     path._targetFunction = true;
                     checkLimitCall('SourcePreparerFunctionEnter');
 
-                    const fnName = path.node.id ? path.node.id.name : '';
-                    labelIdentifier = parentScope.generateUidIdentifier(fnName || void 0);
+                    const body = path.get('body');
 
+                    labelIdentifier = t.identifier(findName(rawFnName + 'Lab', parentScope, body.scope));
                     if (!useParentResultIdentifier) {
-                        resultIdentifier = parentScope.generateUidIdentifier(fnName ? (fnName + 'Result') : 'result');
+                        resultIdentifier = t.identifier(findName(rawFnName + 'Ret', parentScope, body.scope));
                     }
 
-                    const body = path.get('body');
                     const scope = body.scope;
 
                     const allBindings = scope.getAllBindings();
@@ -399,7 +432,6 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     for (let i = 0; i < keys.length; i++) {
                         const key = keys[i];
-                        const binding = allBindings[key];
                         if (parentScope.hasBinding(key)) {
                             let newKey = findName(key, parentScope, path.scope);
                             scope.rename(key, newKey);
@@ -415,7 +447,6 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                     const body = path.get('body');
 
-                    const skipArguments = [];
                     parentPath.node.arguments.forEach((arg, i) => {
                         if (parentPath.node && t.isFunction(arg)) {
                             const node = path.node.params[i];
@@ -436,7 +467,6 @@ const inlinerPlugin = (parentPath)=>function (obj) {
 
                                 }
                             }
-                            skipArguments[i] = true;
                         }
                     });
 
@@ -454,6 +484,13 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         replaceBody.push(t.labeledStatement(labelIdentifier, body.node));
                     } else {
                         replaceBody.push(body.node);
+                    }
+
+                    if (!returnIsUsed) {
+                        const ret = replaceReturn(t.returnStatement(t.identifier('undefined')));
+                        if (ret) {
+                            replaceBody.push(ret);
+                        }
                     }
 
                     path.parentPath.replaceWith(t.blockStatement(replaceBody));
@@ -502,8 +539,8 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                         return;
                     }
                     checkLimitCall('SourcePreparerThisEnter');
-                    if (!thisAssigned) {
-                        thisAssigned = true;
+                    if (!thisIdentifier) {
+                        thisIdentifier = t.identifier(findName('_this', parentScope, path.scope));
                         variables.push(t.variableDeclarator(thisIdentifier, thisValue));
                     }
                     path.replaceWith(thisIdentifier);
@@ -522,17 +559,9 @@ const inlinerPlugin = (parentPath)=>function (obj) {
                     }
 
                     const replace = [];
-                    if (!callIsStatement) {
-                        if (resultIsDeclared) {
-                            replace.push(t.expressionStatement(t.assignmentExpression('=', resultIdentifier, path.node.argument)));
-                        } else {
-                            replace.push(t.variableDeclaration('var', [t.variableDeclarator(resultIdentifier, path.node.argument)]));
-                            resultIsDeclared = true;
-                        }
-                    } else {
-                        if (!t.isIdentifier(path.node.argument)) {
-                            replace.push(t.expressionStatement(path.node.argument));
-                        }
+                    const ret = replaceReturn(path.node);
+                    if (ret) {
+                        replace.push(ret);
                     }
                     if (!isLastReturn) {
                         replace.push(t.breakStatement(labelIdentifier));
@@ -544,13 +573,13 @@ const inlinerPlugin = (parentPath)=>function (obj) {
     }
 };
 
-function inlinePath(ast, path) {
+function inlinePath(ast, path, fnName) {
     const code = Babel.transformFromAst(ast, '', {
         compact: false,
         presets: ['stage-0']
     }).code;
     const output = Babel.transform(code, {
-        plugins: [inlinerPlugin(path)],
+        plugins: [inlinerPlugin(path, fnName)],
         compact: false,
         presets: ['stage-0']
     });
@@ -617,7 +646,7 @@ const plugin = (config)=>function (obj) {
                                 // binding = path.scope.getAllBindings()[fnName];
                                 // if (fnName == 'everyFn_') debugger;
                                 // printCode('before ' + fnName, path);
-                                inlinePath(t.program([t.expressionStatement(funExp)]), path);
+                                inlinePath(t.program([t.expressionStatement(funExp)]), path, fnName);
                                 // printCode('after ' + fnName, path);
 
                                 // const oldBinding = binding;
@@ -628,11 +657,7 @@ const plugin = (config)=>function (obj) {
                                 if (binding) {
                                     const refs = binding.referencePaths;
                                     if (refs.length == 0) {
-                                        if (isVariableDeclarator) {
-                                            binding.path.parentPath.remove();
-                                        } else {
-                                            binding.path.remove();
-                                        }
+                                        binding.path.remove();
                                     } else {
                                         console.log('Not all usings inlined', binding.path);
                                     }
